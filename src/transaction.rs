@@ -1,18 +1,28 @@
 use std::collections::HashMap;
 use chrono::{DateTime, Local};
-use serde::{Serialize, Deserialize};
 
+type HashValue = [u8; 32];
 
-// #[derive(Debug,Ord, PartialOrd, Eq, PartialEq,Serialize, Deserialize)]
-// pub struct Transaction {
-//     sender: HashString,
-//     receiver: HashString,
-//     amount: f64,
-//     timestamp: String,
-//     hash: HashString,
-//     signature: HashString,
-// }
-// #[derive(Debug,Ord, PartialOrd, Eq, PartialEq,Serialize, Deserialize)]
-// pub struct TransactionPool {
-//     pool: Box<HashMap<HashString, Transaction>>,
-// }
+/// convert a `HashString` to a `String` with `0x` prefix
+pub struct TransactionPool {
+    pool: Box<HashMap<HashValue, Transaction>>,
+}
+
+pub struct Transaction {
+    inputs: Vec<Input>,
+    outputs: Vec<Output>,
+    timestamp: String,
+    hash: HashValue,
+}
+
+pub struct Input {
+    transaction_hash: HashValue,
+    index: u64,
+    signature: HashValue,
+}
+
+pub struct Output {
+    receiver: HashValue,
+    amount: f64,
+}
+
