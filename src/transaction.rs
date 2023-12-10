@@ -1,28 +1,27 @@
-use std::collections::HashMap;
-use chrono::{DateTime, Local};
+use crate::types::Bytes;
+use serde::{Deserialize, Serialize};
 
-type HashValue = [u8; 32];
+type HashValue = Bytes<32>;
 
-/// convert a `HashString` to a `String` with `0x` prefix
+#[allow(dead_code)]
 pub struct TransactionPool {
-    pool: Box<HashMap<HashValue, Transaction>>,
+    pool: Vec<Transaction>,
 }
-
+#[derive(Debug, PartialOrd, PartialEq, Serialize, Deserialize)]
 pub struct Transaction {
     inputs: Vec<Input>,
     outputs: Vec<Output>,
-    timestamp: String,
-    hash: HashValue,
+    transaction_id: HashValue,
+    transaction_fee: f64,
 }
-
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Input {
-    transaction_hash: HashValue,
-    index: u64,
-    signature: HashValue,
+    transaction_hash: HashValue, // 前一个交易的哈希值
+    index: u64,                  // 前一个交易中的第几个输出
+    response_script: Bytes<64>,
 }
-
+#[derive(Debug, PartialOrd, PartialEq, Serialize, Deserialize)]
 pub struct Output {
-    receiver: HashValue,
     amount: f64,
+    challenge_script: Bytes<64>,
 }
-

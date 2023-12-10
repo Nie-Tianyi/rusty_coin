@@ -1,0 +1,31 @@
+repos:
+  # 一些现成的 hooks，还有更多hooks详见下方的 repo 链接
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-added-large-files
+        args: ['--maxkb=1024']  # Sets the size limit to 1024 KB
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: fix-byte-order-marker
+  # 一些本地 hooks
+  - repo: local
+    hooks:
+      - id: cargo-fmt # 代码格式化
+        name: cargo fmt
+        description: Format files with rustfmt.
+        entry: bash -c 'cargo fmt -- --check'
+        language: rust
+        pass_filenames: false
+      - id: cargo-clippy # 静态检查
+        name: cargo clippy
+        description: Lint rust sources
+        entry: bash -c 'cargo clippy --all-targets --all-features --tests --benches -- -D warnings'
+        language: rust
+        pass_filenames: false
+      - id: cargo-test # 单元测试
+        name: cargo test
+        description: unit test for the project
+        entry: bash -c 'cargo test --all-features --all'
+        language: rust
+        pass_filenames: false
