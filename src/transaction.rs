@@ -140,12 +140,13 @@ mod tests {
             vec![Output::new(0.0, vec![0u8; 32])],
             HashValue::new([0u8; 32]),
             0.0,
-            vec![0u8; 32],
+            vec![1u8; 32],
         );
         let hash = transaction.sha256();
+
         assert_eq!(
             hash.to_string(),
-            "0x6fd42657e2a88b9a57bb2f732935b22741be66363fe32d3ca756a44e068a6c4b"
+            "0x153c2bcc69f5f5fd2ddbe53b9ffd6fdeddf376dc9eb49ef4e59f024131a5d1f5"
         );
     }
 }
