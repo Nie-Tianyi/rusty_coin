@@ -2,9 +2,6 @@ use crate::transaction::Transaction;
 use crate::types::HashValue;
 use serde::{Deserialize, Serialize};
 
-/// use a 32-byte array (fixed length) store the `HashString`, so that
-/// this value can be stored on heap
-
 #[derive(Debug, PartialOrd, PartialEq, Serialize, Deserialize)]
 pub struct Block {
     version: f64,           // 版本号
@@ -14,7 +11,7 @@ pub struct Block {
     prev_hash: HashValue,   // 前一个区块的哈希值
     hash: HashValue,        // 当前区块的哈希值，工作量证明
     merkle_root: HashValue, // 默克尔树根节点的哈希值
-    difficulty: u8,         // 难度系数，每 1024 个区块调整一次难度
+    difficulty: u8,         // 难度系数，每 1024 个区块调整一次难度, nBits的格式
     nonce: i64,             // 随机数，工作量证明
 }
 
