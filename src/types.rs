@@ -6,6 +6,12 @@ use serde::{Deserialize, Serialize};
 
 pub type HashValue = Bytes<32>;
 
+impl HashValue {
+    pub fn new(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+}
+
 pub type Signature = Bytes<65>;
 
 //to store the hash value on stack, facilitate compute process
