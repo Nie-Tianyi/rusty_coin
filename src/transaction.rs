@@ -5,11 +5,11 @@ use sha2::{Digest, Sha256};
 /// Represents a transaction in the blockchain.
 #[derive(Debug, PartialOrd, PartialEq, Serialize, Deserialize)]
 pub struct Transaction {
-    inputs: Vec<Input>,        // The inputs for the transaction.
-    outputs: Vec<Output>,      // The outputs for the transaction.
-    transaction_id: HashValue, // The unique identifier for the transaction.
-    transaction_fee: f64,      // The fee associated with the transaction.
-    additional_data: Vec<u8>,  // Any additional data associated with the transaction.
+    pub inputs: Vec<Input>,        // The inputs for the transaction.
+    pub outputs: Vec<Output>,      // The outputs for the transaction.
+    pub transaction_id: HashValue, // The unique identifier for the transaction.
+    pub transaction_fee: f64,      // The fee associated with the transaction.
+    pub additional_data: Vec<u8>,  // Any additional data associated with the transaction.
 }
 
 impl Transaction {
