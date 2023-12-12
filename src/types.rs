@@ -3,12 +3,20 @@ use std::fmt::Formatter;
 use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 pub type HashValue = Bytes<32>;
 
 impl HashValue {
     pub fn new(bytes: [u8; 32]) -> Self {
         Self(bytes)
+    }
+
+    pub fn sha256(&self) -> Self {
+        let mut hasher = Sha256::new();
+        hasher.update(self.0);
+        let result = hasher.finalize().into();
+        Self::new(result)
     }
 }
 

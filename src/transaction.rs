@@ -37,7 +37,6 @@ impl Transaction {
             additional_data,
         }
     }
-
     /// Calculates the SHA256 hash of the transaction.
     ///
     /// # Returns
@@ -142,11 +141,21 @@ mod tests {
             0.0,
             vec![1u8; 32],
         );
-        let hash = transaction.sha256();
+
+        println!("{}", serde_json::to_string(&transaction).unwrap());
+
+        let hash = transaction.sha256(); //hash once
 
         assert_eq!(
             hash.to_string(),
             "0x153c2bcc69f5f5fd2ddbe53b9ffd6fdeddf376dc9eb49ef4e59f024131a5d1f5"
+        );
+
+        let hash = transaction.sha256().sha256(); //hash twice
+
+        assert_eq!(
+            hash.to_string(),
+            "0x0de448964b46b5530f4936f728fabf562c14a181acb7526317ccbe3986b5774d"
         );
     }
 }

@@ -19,9 +19,9 @@ async fn main() {
 
     let app = Router::new().route("/ping", get(pong));
 
-    let server = axum::Server::bind(&"0.0.0.0:0".parse().unwrap()).serve(app.into_make_service());
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:0").await.unwrap();
 
-    if let SocketAddr::V4(addr4) = server.local_addr() {
+    if let SocketAddr::V4(addr4) = listener.local_addr().unwrap() {
         let port = addr4.port();
         let ip = addr4.ip();
         println!("Listening on http://{ip}:{port}");
@@ -29,6 +29,8 @@ async fn main() {
         println!("use ping-pong to test the server: http://127.0.0.1:{port}/ping");
         println!("you should get a \"pong\" in response");
     }
+
+    let server = axum::serve(listener, app);
 
     server.await.unwrap();
 }
