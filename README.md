@@ -1,3 +1,2 @@
 # rusty_coin
-a bitcoin-like system.
-implement with Rust.
+a bitcoin-like system. Implement with Rustlang.
