@@ -1,4 +1,5 @@
 use crate::types::HashValue;
+use secp256k1::{Message, PublicKey, SecretKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -85,7 +86,7 @@ impl Input {
     /// * `transaction_hash` - The hash of the previous transaction.
     /// * `previous_block_index` - The index of the previous block.
     /// * `output_index` - The index of the output in the previous transaction.
-    /// * `unlock_script` - The unlock script. This is a signature and a public key.
+    /// * `unlock_script` - The unlock script. This is sender's signature and sender's public key.
     pub fn new(
         transaction_hash: HashValue,
         previous_block_index: u64,
@@ -101,6 +102,28 @@ impl Input {
             unlock_script,
         }
     }
+}
+
+/// Generates the unlock script for the input.
+/// an unlock script is a signature of previous transaction and a public key of sender,
+/// here is separated with a 31 bytes long 0s vector `[0u8;31]`.
+/// # Arguments
+/// * `previous_transaction` - The previous transaction.
+/// * `private_key` - The private key of the sender.
+/// * `public_key` - The public key of the sender.
+pub fn generate_unlock_script(
+    previous_transaction: &Transaction,
+    private_key: &SecretKey,
+    public_key: &PublicKey,
+) -> Vec<u8> {
+    let msg = Message::from_digest(*previous_transaction.sha256());
+    let signature = private_key.sign_ecdsa(msg);
+    [
+        signature.serialize_compact().to_vec(), // signature
+        [0u8; 31].to_vec(),                     // separator
+        public_key.serialize().to_vec(),        // public key
+    ]
+    .concat()
 }
 
 /// Represents an output for a transaction.
@@ -157,5 +180,7 @@ mod tests {
             hash.to_string(),
             "0x0de448964b46b5530f4936f728fabf562c14a181acb7526317ccbe3986b5774d"
         );
+
+        println!("{:?}", hash);
     }
 }

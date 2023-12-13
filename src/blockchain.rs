@@ -88,6 +88,19 @@ impl Block {
 
         hashes[0]
     }
+    /// find the valid hash value by the proof of work
+    pub fn find_valid_hash(&mut self) -> HashValue {
+        let mut nonce = 0i64;
+        let target_threshold = self.target_threshold();
+        let mut valid_hash = self.sha256().sha256();
+
+        while valid_hash > target_threshold {
+            nonce += 1;
+            self.nonce = nonce;
+            valid_hash = self.sha256().sha256();
+        }
+        valid_hash
+    }
 
     /// calculate the hash value of the block header
     fn sha256(&self) -> HashValue {
@@ -107,6 +120,25 @@ impl Block {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Blockchain {
     pub blockchain: Vec<Block>,
+}
+
+impl Blockchain {
+    pub fn new() -> Self {
+        let genesis_block = create_genesis_block();
+        Self {
+            blockchain: vec![genesis_block],
+        }
+    }
+
+    pub fn add_block(&mut self, block: Block) {
+        self.blockchain.push(block);
+    }
+}
+
+impl Default for Blockchain {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 fn create_genesis_block() -> Block {
@@ -147,23 +179,24 @@ fn create_genesis_block() -> Block {
     genesis_block
 }
 
-impl Blockchain {
-    pub fn new() -> Self {
-        let genesis_block = create_genesis_block();
-        Self {
-            blockchain: vec![genesis_block],
-        }
-    }
-
-    pub fn add_block(&mut self, block: Block) {
-        self.blockchain.push(block);
-    }
+pub fn verify_block(block: &Block) -> bool {
+    let target_threshold = block.target_threshold();
+    block.hash <= target_threshold
 }
 
-impl Default for Blockchain {
-    fn default() -> Self {
-        Self::new()
-    }
+pub fn create_transaction() -> Transaction {
+    Transaction::new(
+        vec![],
+        vec![],
+        HashValue::new([0u8; 32]),
+        0.0,
+        vec![0u8; 32],
+    )
+}
+
+pub fn verify_transaction(transaction: &Transaction) -> bool {
+    let transaction_id = transaction.sha256();
+    transaction_id == transaction.transaction_id
 }
 
 #[cfg(test)]
