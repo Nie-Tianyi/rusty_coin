@@ -1,2 +1,2 @@
 # rusty_coin
-a bitcoin like system.
+a bitcoin-like system.
