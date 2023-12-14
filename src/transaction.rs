@@ -67,6 +67,10 @@ impl Transaction {
         let result = hasher.finalize().into();
         HashValue::new(result)
     }
+
+    pub fn update_digest(&mut self) {
+        self.transaction_id = self.sha256();
+    }
 }
 
 pub fn verify_scripts(
@@ -202,9 +206,8 @@ mod tests {
     use super::*;
     use secp256k1::generate_keypair;
 
-    #[test]
-    fn test_hasher() {
-        let transaction = Transaction::new(
+    fn create_default_transaction() -> Transaction {
+        let mut transaction = Transaction::new(
             vec![Input::new(HashValue::new([0u8; 32]), 0, 0, vec![0u8; 32])],
             vec![Output::new(0.0, vec![0u8; 32])],
             HashValue::new([0u8; 32]),
@@ -212,34 +215,36 @@ mod tests {
             vec![1u8; 32],
         );
 
-        println!("{}", serde_json::to_string(&transaction).unwrap());
+        transaction.update_digest();
+
+        transaction
+    }
+
+    #[test]
+    fn test_hasher() {
+        let transaction = create_default_transaction();
+        // println!("{}", serde_json::to_string(&transaction).unwrap());
 
         let hash = transaction.sha256(); //hash once
 
         assert_eq!(
             hash.to_string(),
-            "0x153c2bcc69f5f5fd2ddbe53b9ffd6fdeddf376dc9eb49ef4e59f024131a5d1f5"
+            "0x832445d7590787c2bdcdf229ae94d3d7ac72895eefd103cbbc9e2c2ee040effb"
         );
 
         let hash = transaction.sha256().sha256(); //hash twice
 
         assert_eq!(
             hash.to_string(),
-            "0x0de448964b46b5530f4936f728fabf562c14a181acb7526317ccbe3986b5774d"
+            "0x6c5e16cc6231446fb3ee97238d2764894538c84a179c35c30ab0f8019be95e98"
         );
 
-        println!("{:?}", hash);
+        // println!("{:?}", hash);
     }
 
     #[test]
     fn test_scripts() {
-        let transaction = Transaction::new(
-            vec![Input::new(HashValue::new([0u8; 32]), 0, 0, vec![0u8; 32])],
-            vec![Output::new(0.0, vec![0u8; 32])],
-            HashValue::new([0u8; 32]),
-            0.0,
-            vec![1u8; 32],
-        );
+        let transaction = create_default_transaction();
 
         let (private_key, public_key) = generate_keypair(&mut rand::thread_rng());
         let unlocking_script = generate_unlock_script(&transaction, &private_key, &public_key);
