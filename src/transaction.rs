@@ -1,15 +1,16 @@
 use crate::types::HashValue;
-use secp256k1::{Message, PublicKey, SecretKey};
+use secp256k1::{ecdsa::Signature, Message, PublicKey, SecretKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 /// Represents a transaction in the blockchain.
+/// Pay2PubKeyHash(P2PKH) is used as the locking script.
 #[derive(Debug, PartialOrd, PartialEq, Serialize, Deserialize)]
 pub struct Transaction {
     pub inputs: Vec<Input>,        // The inputs for the transaction.
     pub outputs: Vec<Output>,      // The outputs for the transaction.
-    pub transaction_id: HashValue, // The unique identifier for the transaction.
-    pub transaction_fee: f64,      // The fee associated with the transaction.
+    pub transaction_id: HashValue, // hash value of this transaction.
+    pub transaction_fee: f64,      // difference between inputs and outputs.
     pub additional_data: Vec<u8>,  // Any additional data associated with the transaction.
 }
 
@@ -68,6 +69,41 @@ impl Transaction {
     }
 }
 
+pub fn verify_scripts(
+    prev_transaction: Transaction,
+    unlocking_script: &[u8],
+    locking_script: &[u8],
+) -> bool {
+    let (signature, public_key) = unlocking_script.split_at(64);
+
+    // verify public key
+    let mut hasher = Sha256::new();
+    hasher.update(public_key);
+    let result: [u8; 32] = hasher.finalize().into();
+
+    if result.to_vec() != *locking_script {
+        return false;
+    }
+
+    // verify signature
+    let msg = Message::from_digest(*prev_transaction.sha256());
+    let signature = Signature::from_compact(signature).unwrap();
+
+    let public_key = match PublicKey::from_slice(public_key) {
+        Ok(public_key) => public_key,
+        Err(e) => {
+            println!("Error: {}", e);
+            return false;
+        }
+    };
+
+    if signature.verify(&msg, &public_key).is_err() {
+        return false;
+    }
+
+    true
+}
+
 /// Represents an input for a transaction.
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Input {
@@ -111,6 +147,7 @@ impl Input {
 /// * `previous_transaction` - The previous transaction.
 /// * `private_key` - The private key of the sender.
 /// * `public_key` - The public key of the sender.
+
 pub fn generate_unlock_script(
     previous_transaction: &Transaction,
     private_key: &SecretKey,
@@ -118,9 +155,9 @@ pub fn generate_unlock_script(
 ) -> Vec<u8> {
     let msg = Message::from_digest(*previous_transaction.sha256());
     let signature = private_key.sign_ecdsa(msg);
+
     [
         signature.serialize_compact().to_vec(), // signature
-        [0u8; 31].to_vec(),                     // separator
         public_key.serialize().to_vec(),        // public key
     ]
     .concat()
@@ -151,9 +188,19 @@ impl Output {
     }
 }
 
+/// generates the locking script for the output.
+/// a locking script is a hash of public key of receiver.
+pub fn generate_locking_script(public_key: &PublicKey) -> Vec<u8> {
+    let mut hasher = Sha256::new();
+    hasher.update(public_key.serialize());
+    let result: [u8; 32] = hasher.finalize().into();
+    result.to_vec()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use secp256k1::generate_keypair;
 
     #[test]
     fn test_hasher() {
@@ -182,5 +229,22 @@ mod tests {
         );
 
         println!("{:?}", hash);
+    }
+
+    #[test]
+    fn test_scripts() {
+        let transaction = Transaction::new(
+            vec![Input::new(HashValue::new([0u8; 32]), 0, 0, vec![0u8; 32])],
+            vec![Output::new(0.0, vec![0u8; 32])],
+            HashValue::new([0u8; 32]),
+            0.0,
+            vec![1u8; 32],
+        );
+
+        let (private_key, public_key) = generate_keypair(&mut rand::thread_rng());
+        let unlocking_script = generate_unlock_script(&transaction, &private_key, &public_key);
+        let locking_script = generate_locking_script(&public_key);
+        let res = verify_scripts(transaction, &unlocking_script, &locking_script);
+        assert!(res);
     }
 }
