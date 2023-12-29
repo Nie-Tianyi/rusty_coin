@@ -68,6 +68,9 @@ impl Transaction {
         HashValue::new(result)
     }
 
+    /// update transaction ID of this transaction:
+    /// * transaction id is the SHA256 of the transaction
+    /// * calculate the SHA256 of this transaction, and assign it to the `transaction_id` field
     pub fn update_digest(&mut self) {
         self.transaction_id = self.sha256();
     }

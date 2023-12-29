@@ -1,3 +1,11 @@
+/// The core part of rusty coin
+/// The mining rule of rusty coin:
+///     - 10 seconds per block, adjust difficulty every hour
+///     - the first transaction in every block should be the coinbase transaction
+///     - coinbase need get 6 * 24 (= 1 day) confirmation before spent
+///     - UTXO need get 6 (= 1 min) confirmation before spent
+/// The reward rule of rusty coin:
+///     - $ reward = $
 use crate::transaction::Transaction;
 use crate::types::HashValue;
 use serde::{Deserialize, Serialize};
@@ -38,15 +46,15 @@ impl Block {
     pub fn target_threshold(&self) -> HashValue {
         let n_bit_bytes: [u8; 4] = self.difficulty.to_be_bytes();
         let mut target = [0u8; 32];
-        let exp: usize = (n_bit_bytes[0] - 3) as usize;
+        let exp: isize = n_bit_bytes[0] as isize - 3;
 
         let mut i = 0usize;
         while i < 32 {
-            if i == 32 - exp - 2 - 1 {
+            if i == (32 - exp - 2 - 1) as usize {
                 target[i] = n_bit_bytes[1];
-            } else if i == 32 - exp - 1 - 1 {
+            } else if i == (32 - exp - 1 - 1) as usize {
                 target[i] = n_bit_bytes[2];
-            } else if i == 32 - exp - 0 - 1 {
+            } else if i == (32 - exp - 0 - 1) as usize {
                 target[i] = n_bit_bytes[3];
             } else {
                 target[i] = 0x00;
@@ -59,16 +67,19 @@ impl Block {
 
     /// calculate the merkle root of all the transactions
     pub fn merkle_root(&self) -> HashValue {
+        // return 0x00...000 directly if the data is empty
         if self.data.is_empty() {
             return HashValue::new([0; 32]);
         }
 
+        //calculate all the transactions' hash value
         let mut hashes = self
             .data
             .iter()
             .map(|transaction| transaction.sha256())
             .collect::<Vec<HashValue>>();
 
+        // construct a merkle tree
         while hashes.len() > 1 {
             hashes = hashes
                 .chunks(2)
@@ -81,7 +92,7 @@ impl Block {
                         let result = hasher.finalize().into();
                         HashValue::new(result)
                     }
-                    _ => unreachable!(),
+                    _ => unreachable!(), // panic immediately if none of the previous pattern get matched
                 })
                 .collect::<Vec<HashValue>>();
         }
@@ -90,7 +101,7 @@ impl Block {
     }
     /// find the valid hash value by the proof of work
     pub fn find_valid_hash(&mut self) -> HashValue {
-        let mut nonce = 0i64;
+        let mut nonce = self.nonce;
         let target_threshold = self.target_threshold();
         let mut valid_hash = self.sha256().sha256();
 
@@ -98,6 +109,7 @@ impl Block {
             nonce += 1;
             self.nonce = nonce;
             valid_hash = self.sha256().sha256();
+            println!("nonce: {}, hash: {}", nonce, valid_hash)
         }
         valid_hash
     }
@@ -119,10 +131,11 @@ impl Block {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Blockchain {
-    pub blockchain: Vec<Block>,
+    blockchain: Vec<Block>,
 }
 
 impl Blockchain {
+    /// create a new blockchain, including the genesis block
     pub fn new() -> Self {
         let genesis_block = create_genesis_block();
         Self {
@@ -130,8 +143,41 @@ impl Blockchain {
         }
     }
 
+    /// add a block to the blockchain
+    /// * please verify the block before calling this function!!!
+    /// * please verify the block before calling this function!!!
+    /// * please verify the block before calling this function!!!
     pub fn add_block(&mut self, block: Block) {
         self.blockchain.push(block);
+    }
+
+    /// get the block by its index
+    pub fn get_block(&self, index: usize) -> Option<&Block> {
+        self.blockchain.get(index)
+    }
+
+    /// get the latest block of the blockchain
+    pub fn get_last_block(&self) -> Option<&Block> {
+        self.blockchain.last()
+    }
+
+    /// verify a block, check if it is valid
+    /// - verify all the transaction in the block
+    /// - verify the coinbase transaction
+    ///     - if it follow the reward rule of this blockchain
+    ///     - if it equal to the sum of transaction fee
+    /// - verify the merkle root of the block
+    /// - verify the difficulty of the block
+    /// - verify the hash value of the block
+    /// - verify the timestamp of the block
+    pub fn verify_block(&self, block: &Block) -> bool {
+        let target_threshold = block.target_threshold();
+        block.hash <= target_threshold
+    }
+
+    pub fn verify_transaction(&self, transaction: &Transaction) -> bool {
+        let transaction_id = transaction.sha256();
+        transaction_id == transaction.transaction_id
     }
 }
 
@@ -160,7 +206,7 @@ fn create_genesis_block() -> Block {
             .to_vec(),
     );
 
-    genesis_transaction.transaction_id = genesis_transaction.sha256();
+    genesis_transaction.update_digest();
 
     let mut genesis_block = Block {
         version: 0.1f64,
@@ -179,26 +225,6 @@ fn create_genesis_block() -> Block {
     genesis_block
 }
 
-pub fn verify_block(block: &Block) -> bool {
-    let target_threshold = block.target_threshold();
-    block.hash <= target_threshold
-}
-
-pub fn create_transaction() -> Transaction {
-    Transaction::new(
-        vec![],
-        vec![],
-        HashValue::new([0u8; 32]),
-        0.0,
-        vec![0u8; 32],
-    )
-}
-
-pub fn verify_transaction(transaction: &Transaction) -> bool {
-    let transaction_id = transaction.sha256();
-    transaction_id == transaction.transaction_id
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,14 +239,14 @@ mod tests {
             prev_hash: HashValue::new([0; 32]),
             hash: HashValue::new([0; 32]),
             merkle_root: HashValue::new([0; 32]),
-            difficulty: 0x04123456u32,
+            difficulty: 0x1E123456u32,
             nonce: 0,
         };
         let target_threshold = block.target_threshold();
 
         assert_eq!(
             target_threshold.to_string(),
-            "0x0000000000000000000000000000000000000000000000000000000012345600"
+            "0x0000123456000000000000000000000000000000000000000000000000000000"
         );
     }
     #[test]
@@ -284,5 +310,22 @@ mod tests {
     fn test_new_blockchain() {
         let blockchain = Blockchain::new();
         println!("{:?}", blockchain);
+    }
+
+    #[test]
+    fn test_mining() {
+        let mut block = Block {
+            version: 0.1f64,
+            index: 0,
+            data: Vec::new(),
+            timestamp: 0u64,
+            prev_hash: HashValue::new([0; 32]),
+            hash: HashValue::new([0; 32]),
+            merkle_root: HashValue::new([0; 32]),
+            difficulty: 0x1E123456u32,
+            nonce: 2054888,
+        };
+        block.hash = block.find_valid_hash();
+        println!("{:?}", block);
     }
 }
