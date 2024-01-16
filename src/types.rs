@@ -20,8 +20,6 @@ impl HashValue {
     }
 }
 
-pub type Signature = Bytes<65>;
-
 //to store the hash value on stack, facilitate compute process
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Ord, PartialOrd)]
 #[serde(try_from = "String", into = "String")]

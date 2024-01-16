@@ -8,6 +8,7 @@
 ///     - $ reward = $
 use crate::transaction::Transaction;
 use crate::types::HashValue;
+use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -136,8 +137,8 @@ pub struct Blockchain {
 
 impl Blockchain {
     /// create a new blockchain, including the genesis block
-    pub fn new() -> Self {
-        let genesis_block = create_genesis_block();
+    pub fn new(genesis_msg: &str) -> Self {
+        let genesis_block = create_genesis_block(genesis_msg);
         Self {
             blockchain: vec![genesis_block],
         }
@@ -183,16 +184,16 @@ impl Blockchain {
 
 impl Default for Blockchain {
     fn default() -> Self {
-        Self::new()
+        Self::new("")
     }
 }
 
-fn create_genesis_block() -> Block {
-    let current_time = match SystemTime::now().duration_since(UNIX_EPOCH) {
+fn create_genesis_block(init_msg: &str) -> Block {
+    let init_time = match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(duration) => duration.as_secs(),
         Err(e) => {
             println!("SystemTimeError: {}", e);
-            1702312206u64
+            0u64
         }
     };
 
@@ -200,19 +201,17 @@ fn create_genesis_block() -> Block {
         vec![],
         vec![],
         HashValue::new([0u8; 32]),
-        0.0,
-        "Genesis Block, by nty1355, at 2023/12/13 2:57 A.M."
-            .as_bytes()
-            .to_vec(),
+        dec!(0.0),
+        init_msg.as_bytes().to_vec(),
     );
 
-    genesis_transaction.update_digest();
+    genesis_transaction.update_digest(); // update genesis transaction's digest (transaction_id, hash value of the transaction)
 
     let mut genesis_block = Block {
         version: 0.1f64,
         index: 0,
         data: vec![genesis_transaction],
-        timestamp: current_time,
+        timestamp: init_time,
         prev_hash: HashValue::new([0; 32]),
         hash: HashValue::new([0; 32]),
         merkle_root: HashValue::new([0; 32]),
@@ -220,8 +219,8 @@ fn create_genesis_block() -> Block {
         nonce: 0,
     };
 
-    genesis_block.merkle_root = genesis_block.merkle_root();
-    genesis_block.hash = genesis_block.sha256();
+    genesis_block.merkle_root = genesis_block.merkle_root(); // update merkle root of the genesis block
+    genesis_block.hash = genesis_block.sha256(); // update hash value of the genesis block
     genesis_block
 }
 
@@ -259,14 +258,14 @@ mod tests {
                     vec![],
                     vec![],
                     HashValue::new([0u8; 32]),
-                    0.0,
+                    dec!(0.0),
                     vec![0u8; 32],
                 ),
                 Transaction::new(
                     vec![],
                     vec![],
                     HashValue::new([0u8; 32]),
-                    0.0,
+                    dec!(0.0),
                     vec![0u8; 32],
                 ),
             ],
@@ -300,15 +299,10 @@ mod tests {
             "0x8ea07e6d3035f172f8d81c803dd65516b2dfd5af9da892dd0ae554bff6ba7a59"
         )
     }
-    #[test]
-    fn test_create_genesis_block() {
-        let genesis_block = create_genesis_block();
-        println!("{:?}", genesis_block);
-    }
 
     #[test]
     fn test_new_blockchain() {
-        let blockchain = Blockchain::new();
+        let blockchain = Blockchain::new("hello world");
         println!("{:?}", blockchain);
     }
 

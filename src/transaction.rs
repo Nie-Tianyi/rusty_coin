@@ -1,4 +1,5 @@
 use crate::types::HashValue;
+use rust_decimal::Decimal;
 use secp256k1::{ecdsa::Signature, Message, PublicKey, SecretKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -10,7 +11,7 @@ pub struct Transaction {
     pub inputs: Vec<Input>,        // The inputs for the transaction.
     pub outputs: Vec<Output>,      // The outputs for the transaction.
     pub transaction_id: HashValue, // hash value of this transaction.
-    pub transaction_fee: f64,      // difference between inputs and outputs.
+    pub transaction_fee: Decimal,  // difference between inputs and outputs.
     pub additional_data: Vec<u8>,  // Any additional data associated with the transaction.
 }
 
@@ -21,14 +22,14 @@ impl Transaction {
     ///
     /// * `inputs` - A vector of inputs for the transaction.
     /// * `outputs` - A vector of outputs for the transaction.
-    /// * `transaction_id` - A unique identifier for the transaction.
+    /// * `transaction_id` - A unique identifier for the transaction. (SHA256 hash value of the transaction)
     /// * `transaction_fee` - The fee associated with the transaction.
     /// * `additional_data` - Any additional data associated with the transaction.
     pub fn new(
         inputs: Vec<Input>,
         outputs: Vec<Output>,
         transaction_id: HashValue,
-        transaction_fee: f64,
+        transaction_fee: Decimal,
         additional_data: Vec<u8>,
     ) -> Self {
         Self {
@@ -62,7 +63,7 @@ impl Transaction {
         }
 
         hasher.update(self.transaction_id);
-        hasher.update(self.transaction_fee.to_be_bytes());
+        hasher.update(serde_json::to_vec(&self.transaction_fee).unwrap());
         hasher.update(&self.additional_data);
         let result = hasher.finalize().into();
         HashValue::new(result)
@@ -76,6 +77,9 @@ impl Transaction {
     }
 }
 
+/// verify the unlocking script
+/// one must provide the unlocking script and the corresponding locking script.
+/// previous transaction need to be provided as the transaction hash is needed.
 pub fn verify_scripts(
     prev_transaction: Transaction,
     unlocking_script: &[u8],
@@ -88,6 +92,7 @@ pub fn verify_scripts(
     hasher.update(public_key);
     let result: [u8; 32] = hasher.finalize().into();
 
+    // check if the hash of public key is the same as the locking script
     if result.to_vec() != *locking_script {
         return false;
     }
@@ -96,6 +101,7 @@ pub fn verify_scripts(
     let msg = Message::from_digest(*prev_transaction.sha256());
     let signature = Signature::from_compact(signature).unwrap();
 
+    // deserialize public key
     let public_key = match PublicKey::from_slice(public_key) {
         Ok(public_key) => public_key,
         Err(e) => {
@@ -207,6 +213,7 @@ pub fn generate_locking_script(public_key: &PublicKey) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_decimal_macros::dec;
     use secp256k1::generate_keypair;
 
     fn create_default_transaction() -> Transaction {
@@ -214,7 +221,7 @@ mod tests {
             vec![Input::new(HashValue::new([0u8; 32]), 0, 0, vec![0u8; 32])],
             vec![Output::new(0.0, vec![0u8; 32])],
             HashValue::new([0u8; 32]),
-            0.0,
+            dec!(0.0),
             vec![1u8; 32],
         );
 
@@ -232,14 +239,14 @@ mod tests {
 
         assert_eq!(
             hash.to_string(),
-            "0x832445d7590787c2bdcdf229ae94d3d7ac72895eefd103cbbc9e2c2ee040effb"
+            "0x42053a0990bf08b60259e6437c3644b090aa8dcdfcad539e893ffe1551ac5a92"
         );
 
         let hash = transaction.sha256().sha256(); //hash twice
 
         assert_eq!(
             hash.to_string(),
-            "0x6c5e16cc6231446fb3ee97238d2764894538c84a179c35c30ab0f8019be95e98"
+            "0x69e024326bc69a921461d911c725aeddc3df87bd74e2d20896276c9196fe7891"
         );
 
         // println!("{:?}", hash);

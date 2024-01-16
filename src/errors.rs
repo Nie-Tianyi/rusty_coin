@@ -1,4 +1,22 @@
 #[derive(Debug)]
 pub enum RustyCoinError {
     InvalidTransaction,
+    InvalidBlock,
+    InvalidInput,
+    InvalidOutput,
+    InvalidSignature,
+    InvalidPublicKey,
+    InvalidSecretKey,
+    InvalidHashValue,
+    InvalidAddress,
+    InvalidAmount,
+    InvalidUTXO,
+    InvalidWallet,
+    InvalidBlockChain,
+    InvalidBlockChainLength,
+    InvalidBlockChainHash,
+    InvalidBlockChainDifficulty,
+    InvalidBlockChainGenesisBlock,
+    InvalidBlockChainGenesisTransaction,
+    InvalidBlockChainGenesisOutput,
 }
