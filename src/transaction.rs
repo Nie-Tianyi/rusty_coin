@@ -57,7 +57,7 @@ impl Transaction {
         }
 
         for output in &self.outputs {
-            hasher.update(output.amount.to_be_bytes());
+            hasher.update(serde_json::to_vec(&output.amount).unwrap());
             hasher.update(output.length_of_locking_script.to_be_bytes());
             hasher.update(&output.locking_script);
         }
@@ -163,8 +163,8 @@ impl Input {
 
 pub fn generate_unlock_script(
     previous_transaction: &Transaction,
-    private_key: &SecretKey,
-    public_key: &PublicKey,
+    private_key: SecretKey,
+    public_key: PublicKey,
 ) -> Vec<u8> {
     let msg = Message::from_digest(*previous_transaction.sha256());
     let signature = private_key.sign_ecdsa(msg);
@@ -179,7 +179,7 @@ pub fn generate_unlock_script(
 /// Represents an output for a transaction.
 #[derive(Debug, PartialOrd, PartialEq, Serialize, Deserialize)]
 pub struct Output {
-    amount: f64,                   // The amount of the output.
+    amount: Decimal,               // The amount of the output.
     length_of_locking_script: u64, // The length of the locking script.
     locking_script: Vec<u8>,       // The locking script: a public key hash.
 }
@@ -191,7 +191,7 @@ impl Output {
     ///
     /// * `amount` - The amount of the output.
     /// * `locking_script` - The locking script. This is a public key hash.
-    pub fn new(amount: f64, locking_script: Vec<u8>) -> Self {
+    pub fn new(amount: Decimal, locking_script: Vec<u8>) -> Self {
         let length_of_locking_script = locking_script.len() as u64;
         Self {
             amount,
@@ -203,7 +203,7 @@ impl Output {
 
 /// generates the locking script for the output.
 /// a locking script is a hash of public key of receiver.
-pub fn generate_locking_script(public_key: &PublicKey) -> Vec<u8> {
+pub fn generate_locking_script(public_key: PublicKey) -> Vec<u8> {
     let mut hasher = Sha256::new();
     hasher.update(public_key.serialize());
     let result: [u8; 32] = hasher.finalize().into();
@@ -219,7 +219,7 @@ mod tests {
     fn create_default_transaction() -> Transaction {
         let mut transaction = Transaction::new(
             vec![Input::new(HashValue::new([0u8; 32]), 0, 0, vec![0u8; 32])],
-            vec![Output::new(0.0, vec![0u8; 32])],
+            vec![Output::new(dec!(0.0), vec![0u8; 32])],
             HashValue::new([0u8; 32]),
             dec!(0.0),
             vec![1u8; 32],
@@ -239,14 +239,14 @@ mod tests {
 
         assert_eq!(
             hash.to_string(),
-            "0x42053a0990bf08b60259e6437c3644b090aa8dcdfcad539e893ffe1551ac5a92"
+            "0xffa18ae4a7d83c4bcd31b554a5438992597648ca85184a9346fab866b209c3e7"
         );
 
         let hash = transaction.sha256().sha256(); //hash twice
 
         assert_eq!(
             hash.to_string(),
-            "0x69e024326bc69a921461d911c725aeddc3df87bd74e2d20896276c9196fe7891"
+            "0xfea1523aa246054eedff72a9a78449210d7af01718207471e475f6e0b85c31e3"
         );
 
         // println!("{:?}", hash);
@@ -257,8 +257,8 @@ mod tests {
         let transaction = create_default_transaction();
 
         let (private_key, public_key) = generate_keypair(&mut rand::thread_rng());
-        let unlocking_script = generate_unlock_script(&transaction, &private_key, &public_key);
-        let locking_script = generate_locking_script(&public_key);
+        let unlocking_script = generate_unlock_script(&transaction, private_key, public_key);
+        let locking_script = generate_locking_script(public_key);
         let res = verify_scripts(transaction, &unlocking_script, &locking_script);
         assert!(res);
     }
