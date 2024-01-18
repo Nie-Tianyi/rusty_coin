@@ -1,4 +1,6 @@
-use crate::transaction::{Input, Output, Transaction};
+use crate::errors::RustyCoinError;
+use crate::errors::RustyCoinError::{InvalidInputFee, InvalidOutputIndex};
+use crate::transaction::{generate_unlock_script, Input, Output, Transaction};
 use crate::types::HashValue;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -8,11 +10,12 @@ use std::fs;
 use std::fs::File;
 use std::io::Write;
 
+#[derive(Debug, PartialEq)]
 pub struct UTXO {
-    pub prev_tx: Transaction,            // the output
-    pub prev_block_index: u64, // the index of the block that contains the previous transaction
-    pub prev_output_index: u64, // the index of the output in the transaction's outputs
-    pub prev_tx_hash: Option<HashValue>, // Hash of previous transaction
+    pub prev_tx: Transaction,    // the output
+    pub prev_block_index: u64,   // the index of the block that contains the previous transaction
+    pub prev_output_index: u64,  // the index of the output in the transaction's outputs
+    pub prev_tx_hash: HashValue, // Hash of previous transaction
 }
 
 impl UTXO {
@@ -23,7 +26,7 @@ impl UTXO {
             prev_tx,
             prev_block_index,
             prev_output_index,
-            prev_tx_hash: Some(prev_tx_hash),
+            prev_tx_hash,
         }
     }
 }
@@ -38,7 +41,7 @@ impl UTXO {
 pub struct Wallet {
     public_key: PublicKey,
     secret_key: SecretKey,
-    unspent_tx_outputs: Vec<Output>,
+    unspent_tx_outputs: Vec<UTXO>,
     address: HashValue, // SHA 256 hash of public key
 }
 
@@ -57,20 +60,71 @@ impl Wallet {
         }
     }
     /// transfer credit to another wallet / other wallets.
-    /// create a transaction and sign it with the secret key.
+    /// create a signed transaction and sign it with the secret key.
+    /// # Arguments
+    /// * `utxos`: a vector of UTXO in your wallet
+    /// * `receivers`: a vector of tuple, the tuple is consist of
+    ///     - a `amount: Decimal` in rust_decimal, the amount that transfer to target
+    ///     - a `address: HashValue`, the address of the receiver (or public key hash of receiver)
     pub fn transfer_credits(
         &self,
-        _utxos: Vec<UTXO>,
-        _receivers: Vec<(Decimal, HashValue)>,
-    ) -> Transaction {
-        Input::new(HashValue::new([0u8; 32]), 0, 0, vec![0u8; 32]);
-        Transaction::new(
-            vec![],
-            vec![],
+        utxos: Vec<UTXO>,
+        receivers: Vec<(Decimal, HashValue)>,
+        extra_info: Option<Vec<u8>>,
+    ) -> Result<Transaction, RustyCoinError> {
+        let mut input_fee = dec!(0.0);
+        let inputs: Result<Vec<Input>, RustyCoinError> = utxos
+            .into_iter()
+            .map(|utxo| {
+                let unlocking_script =
+                    generate_unlock_script(&utxo.prev_tx, self.secret_key, self.public_key);
+
+                if utxo.prev_output_index >= usize::MAX as u64 {
+                    return Err(InvalidOutputIndex);
+                }
+                input_fee += utxo
+                    .prev_tx
+                    .get_output(utxo.prev_output_index as usize)
+                    .unwrap()
+                    .get_amount();
+
+                let input = Input::new(
+                    utxo.prev_tx_hash,
+                    utxo.prev_block_index,
+                    utxo.prev_output_index,
+                    unlocking_script,
+                );
+
+                Ok(input)
+            })
+            .collect();
+
+        let inputs = inputs?; // Unwrap the Result
+
+        let outputs: Vec<Output> = receivers
+            .into_iter()
+            .map(|(amount, address)| Output::new(amount, address.to_vec()))
+            .collect();
+
+        let output_fee: Decimal = outputs.iter().map(|output| output.get_amount()).sum();
+
+        let tx_fee = input_fee - output_fee;
+
+        if tx_fee < dec!(0.0) {
+            return Err(InvalidInputFee);
+        }
+
+        let mut tx = Transaction::new(
+            inputs,
+            outputs,
             HashValue::new([0u8; 32]),
-            dec!(0.0),
-            vec![0u8; 32],
-        )
+            tx_fee,
+            extra_info,
+        );
+
+        tx.update_digest();
+
+        Ok(tx)
     }
 
     pub fn get_public_key(&self) -> PublicKey {
@@ -144,5 +198,30 @@ mod test {
         let locking_script = generate_locking_script(wallet.get_public_key());
         let address = wallet.get_address().to_vec();
         assert_eq!(locking_script, address);
+    }
+
+    #[test]
+    fn test_transfer_credit() {
+        let wallet1 = Wallet::new();
+        let wallet2 = Wallet::new();
+        let tx = wallet1
+            .transfer_credits(
+                vec![UTXO::new(
+                    Transaction::new(
+                        vec![Input::new(HashValue::new([0u8; 32]), 0, 0, vec![0u8; 32])],
+                        vec![Output::new(dec!(1.0), vec![0u8; 32])],
+                        HashValue::new([0u8; 32]),
+                        dec!(0.0),
+                        None,
+                    ),
+                    0,
+                    0,
+                )],
+                vec![(dec!(0.5), wallet2.get_address())],
+                None,
+            )
+            .unwrap();
+
+        println!("{:?}", tx);
     }
 }

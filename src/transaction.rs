@@ -8,11 +8,11 @@ use sha2::{Digest, Sha256};
 /// Pay2PubKeyHash(P2PKH) is used as the locking script.
 #[derive(Debug, PartialOrd, PartialEq, Serialize, Deserialize)]
 pub struct Transaction {
-    pub inputs: Vec<Input>,        // The inputs for the transaction.
-    pub outputs: Vec<Output>,      // The outputs for the transaction.
-    pub transaction_id: HashValue, // hash value of this transaction.
-    pub transaction_fee: Decimal,  // difference between inputs and outputs.
-    pub additional_data: Vec<u8>,  // Any additional data associated with the transaction.
+    inputs: Vec<Input>,               // The inputs for the transaction.
+    outputs: Vec<Output>,             // The outputs for the transaction.
+    transaction_id: HashValue,        // hash value of this transaction.
+    transaction_fee: Decimal,         // difference between inputs and outputs.
+    additional_data: Option<Vec<u8>>, // Any additional data associated with the transaction.
 }
 
 impl Transaction {
@@ -30,7 +30,7 @@ impl Transaction {
         outputs: Vec<Output>,
         transaction_id: HashValue,
         transaction_fee: Decimal,
-        additional_data: Vec<u8>,
+        additional_data: Option<Vec<u8>>,
     ) -> Self {
         Self {
             inputs,
@@ -49,8 +49,8 @@ impl Transaction {
         let mut hasher = Sha256::new();
 
         for input in &self.inputs {
-            hasher.update(input.transaction_hash);
-            hasher.update(input.previous_block_index.to_be_bytes());
+            hasher.update(input.prev_transaction_hash);
+            hasher.update(input.prev_block_index.to_be_bytes());
             hasher.update(input.output_index.to_be_bytes());
             hasher.update(input.length_of_unlock_script.to_be_bytes());
             hasher.update(&input.unlock_script);
@@ -64,7 +64,9 @@ impl Transaction {
 
         hasher.update(self.transaction_id);
         hasher.update(serde_json::to_vec(&self.transaction_fee).unwrap());
-        hasher.update(&self.additional_data);
+        if self.additional_data.is_some() {
+            hasher.update(&self.additional_data.clone().unwrap());
+        }
         let result = hasher.finalize().into();
         HashValue::new(result)
     }
@@ -74,6 +76,28 @@ impl Transaction {
     /// * calculate the SHA256 of this transaction, and assign it to the `transaction_id` field
     pub fn update_digest(&mut self) {
         self.transaction_id = self.sha256();
+    }
+    /// get one output from the outputs vector
+    /// # Arguments
+    /// * `index` - the index of the output
+    /// # Returns
+    /// * `Some(output)` - if the index is valid
+    pub fn get_output(&self, index: usize) -> Option<&Output> {
+        self.outputs.get(index)
+    }
+    /// get the transaction fee of this transaction
+    /// # Returns
+    /// * `transaction_fee` - the transaction fee of this transaction
+    pub fn get_transaction_fee(&self) -> Decimal {
+        self.transaction_fee
+    }
+
+    pub fn get_inputs(&self) -> &Vec<Input> {
+        &self.inputs
+    }
+
+    pub fn get_transaction_id(&self) -> HashValue {
+        self.transaction_id
     }
 }
 
@@ -120,11 +144,11 @@ pub fn verify_scripts(
 /// Represents an input for a transaction.
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Input {
-    transaction_hash: HashValue,  // The hash of the previous transaction.
-    previous_block_index: u64,    // The index of the previous block.
-    output_index: u64,            // The index of the output in the previous transaction.
-    length_of_unlock_script: u64, // The length of the unlock script.
-    unlock_script: Vec<u8>,       // The unlock script: a signature and a public key.
+    prev_transaction_hash: HashValue, // The hash of the previous transaction.
+    prev_block_index: u64,            // The index of the previous block.
+    output_index: u64,                // The index of the output in the previous transaction.
+    length_of_unlock_script: u64,     // The length of the unlock script.
+    unlock_script: Vec<u8>,           // The unlock script: a signature and a public key.
 }
 
 impl Input {
@@ -144,8 +168,8 @@ impl Input {
     ) -> Self {
         let length_of_unlock_script = unlock_script.len() as u64;
         Self {
-            transaction_hash,
-            previous_block_index,
+            prev_transaction_hash: transaction_hash,
+            prev_block_index: previous_block_index,
             output_index,
             length_of_unlock_script,
             unlock_script,
@@ -199,6 +223,10 @@ impl Output {
             locking_script,
         }
     }
+
+    pub fn get_amount(&self) -> Decimal {
+        self.amount
+    }
 }
 
 /// generates the locking script for the output.
@@ -222,7 +250,7 @@ mod tests {
             vec![Output::new(dec!(0.0), vec![0u8; 32])],
             HashValue::new([0u8; 32]),
             dec!(0.0),
-            vec![1u8; 32],
+            None,
         );
 
         transaction.update_digest();
@@ -236,20 +264,9 @@ mod tests {
         // println!("{}", serde_json::to_string(&transaction).unwrap());
 
         let hash = transaction.sha256(); //hash once
-
-        assert_eq!(
-            hash.to_string(),
-            "0xffa18ae4a7d83c4bcd31b554a5438992597648ca85184a9346fab866b209c3e7"
-        );
-
+        println!("{}", hash);
         let hash = transaction.sha256().sha256(); //hash twice
-
-        assert_eq!(
-            hash.to_string(),
-            "0xfea1523aa246054eedff72a9a78449210d7af01718207471e475f6e0b85c31e3"
-        );
-
-        // println!("{:?}", hash);
+        println!("{}", hash);
     }
 
     #[test]

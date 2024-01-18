@@ -178,7 +178,7 @@ impl Blockchain {
 
     pub fn verify_transaction(&self, transaction: &Transaction) -> bool {
         let transaction_id = transaction.sha256();
-        transaction_id == transaction.transaction_id
+        transaction_id == transaction.get_transaction_id()
     }
 }
 
@@ -202,7 +202,7 @@ fn create_genesis_block(init_msg: &str) -> Block {
         vec![],
         HashValue::new([0u8; 32]),
         dec!(0.0),
-        init_msg.as_bytes().to_vec(),
+        Some(init_msg.as_bytes().to_vec()),
     );
 
     genesis_transaction.update_digest(); // update genesis transaction's digest (transaction_id, hash value of the transaction)
@@ -254,20 +254,8 @@ mod tests {
             version: 0.1f64,
             index: 0,
             data: vec![
-                Transaction::new(
-                    vec![],
-                    vec![],
-                    HashValue::new([0u8; 32]),
-                    dec!(0.0),
-                    vec![0u8; 32],
-                ),
-                Transaction::new(
-                    vec![],
-                    vec![],
-                    HashValue::new([0u8; 32]),
-                    dec!(0.0),
-                    vec![0u8; 32],
-                ),
+                Transaction::new(vec![], vec![], HashValue::new([0u8; 32]), dec!(0.0), None),
+                Transaction::new(vec![], vec![], HashValue::new([0u8; 32]), dec!(0.0), None),
             ],
             timestamp: 0u64,
             prev_hash: HashValue::new([0; 32]),
