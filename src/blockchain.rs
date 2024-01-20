@@ -1,3 +1,7 @@
+use crate::errors::RustyCoinError;
+use crate::errors::RustyCoinError::{
+    InvalidBlockIndex, InvalidOutputIndex, InvalidTransactionIndex,
+};
 /// The core part of rusty coin
 /// The mining rule of rusty coin:
 ///     - 10 seconds per block, adjust difficulty every hour
@@ -11,6 +15,7 @@ use crate::types::HashValue;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::hash::{Hash, Hasher};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The `Block` struct represents a block in the blockchain.
@@ -26,17 +31,17 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// * `difficulty` - An unsigned 32-bit integer representing the difficulty target for the proof of work. The difficulty is adjusted every 1024 blocks.
 /// * `nonce` - A signed 64-bit integer used in the proof of work.
 /// * `data` - A vector of `Transaction` structs representing the transactions included in the block.
-#[derive(Debug, PartialOrd, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Block {
     version: f64,           // version of the block
-    index: u64,             // block height
+    index: usize,           // block height
     timestamp: u64,         // time elapsed since the Unix Epoch (January 1, 1970) in seconds
     prev_hash: HashValue,   // previous block hash
     hash: HashValue,        // hash value of current block
     merkle_root: HashValue, // merkle root of all the transactions
     difficulty: u32,        // difficulty target for the proof of work, adjusted every 1024 blocks
     nonce: i64,             // random number
-    data: Vec<Transaction>, // transaction data
+    data: Vec<Transaction>, // transactions
 }
 
 impl Block {
@@ -110,12 +115,12 @@ impl Block {
             nonce += 1;
             self.nonce = nonce;
             valid_hash = self.sha256().sha256();
-            println!("nonce: {}, hash: {}", nonce, valid_hash)
+            // println!("nonce: {}, hash: {}", nonce, valid_hash)
         }
         valid_hash
     }
 
-    /// calculate the hash value of the block header
+    /// calculate the hash value of the block
     fn sha256(&self) -> HashValue {
         let mut hasher = Sha256::new();
         hasher.update(self.version.to_be_bytes());
@@ -128,11 +133,30 @@ impl Block {
         let result = hasher.finalize().into();
         HashValue::new(result)
     }
+
+    ///
+    ///
+    /// # Arguments
+    ///
+    /// * `tx_id`: HashValue - the hash value of the transaction
+    ///
+    /// returns: Option<&Transaction>
+    fn get_tx_by_id(&self, tx_id: HashValue) -> Option<&Transaction> {
+        self.data.iter().find(|tx| tx.get_transaction_id() == tx_id)
+    }
+}
+
+impl Hash for Transaction {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let hash = self.sha256();
+        hash.iter().for_each(|byte| state.write_u8(*byte));
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Blockchain {
-    blockchain: Vec<Block>,
+    blockchain: Vec<Block>,    // store the blockchain
+    tx_pool: Vec<Transaction>, // store the unpacked transactions
 }
 
 impl Blockchain {
@@ -141,6 +165,7 @@ impl Blockchain {
         let genesis_block = create_genesis_block(genesis_msg);
         Self {
             blockchain: vec![genesis_block],
+            tx_pool: vec![],
         }
     }
 
@@ -162,23 +187,66 @@ impl Blockchain {
         self.blockchain.last()
     }
 
-    /// verify a block, check if it is valid
-    /// - verify all the transaction in the block
-    /// - verify the coinbase transaction
+    /// verify a block's integrity, check if it is valid
+    /// - check all the transaction in the block
+    /// - check the coinbase transaction
     ///     - if it follow the reward rule of this blockchain
     ///     - if it equal to the sum of transaction fee
-    /// - verify the merkle root of the block
-    /// - verify the difficulty of the block
-    /// - verify the hash value of the block
-    /// - verify the timestamp of the block
+    /// - check the merkle root of the block
+    /// - check the difficulty of the block
+    /// - check the hash value of the block
+    /// - check the timestamp of the block
     pub fn verify_block(&self, block: &Block) -> bool {
         let target_threshold = block.target_threshold();
         block.hash <= target_threshold
     }
 
-    pub fn verify_transaction(&self, transaction: &Transaction) -> bool {
-        let transaction_id = transaction.sha256();
-        transaction_id == transaction.get_transaction_id()
+    pub fn verify_transaction(&self, transaction: &Transaction) -> Result<bool, RustyCoinError> {
+        // check if inputs are legal:
+        // - check prev_transaction_hash
+        // - check unlocking_script
+        let mut input_fee_sum = dec!(0.0);
+        for input in transaction.get_inputs() {
+            // get previous block that contain this input tx
+            let block = self
+                .blockchain
+                .get(input.get_prev_block_index())
+                .ok_or(InvalidBlockIndex)
+                .unwrap();
+            // get the previous transaction, if it is None, then return an error
+            let prev_tx = block
+                .get_tx_by_id(input.get_prev_tx_hash())
+                .ok_or(InvalidTransactionIndex)
+                .unwrap();
+            // get the output
+            let prev_output = prev_tx
+                .get_output_by_index(input.get_prev_output_index())
+                .ok_or(InvalidOutputIndex)
+                .unwrap();
+            input_fee_sum += prev_output.get_amount();
+            // verify the unlock script
+            if !Transaction::verify_scripts(
+                prev_tx,
+                prev_output.get_locking_script(),
+                input.get_unlock_script(),
+            ) {
+                return Ok(false);
+            }
+        }
+        // check the transaction hash, if it is equal to the transaction ID
+        if transaction.get_transaction_id() != transaction.sha256() {
+            return Ok(false);
+        }
+        // check if the transaction fee is valid
+        // calculate the output sum
+        for output in transaction.get_outputs() {
+            input_fee_sum -= output.get_amount();
+        }
+        if transaction.get_transaction_fee() != input_fee_sum {
+            return Ok(false);
+        }
+
+        Ok(true)
     }
 }
 

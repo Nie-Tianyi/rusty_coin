@@ -1,6 +1,6 @@
 use crate::errors::RustyCoinError;
 use crate::errors::RustyCoinError::{InvalidInputFee, InvalidOutputIndex};
-use crate::transaction::{generate_unlock_script, Input, Output, Transaction};
+use crate::transaction::{Input, Output, Transaction};
 use crate::types::HashValue;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -12,14 +12,14 @@ use std::io::Write;
 
 #[derive(Debug, PartialEq)]
 pub struct UTXO {
-    pub prev_tx: Transaction,    // the output
-    pub prev_block_index: u64,   // the index of the block that contains the previous transaction
-    pub prev_output_index: u64,  // the index of the output in the transaction's outputs
-    pub prev_tx_hash: HashValue, // Hash of previous transaction
+    pub prev_tx: Transaction,     // the output
+    pub prev_block_index: usize,  // the index of the block that contains the previous transaction
+    pub prev_output_index: usize, // the index of the output in the transaction's outputs
+    pub prev_tx_hash: HashValue,  // Hash of previous transaction
 }
 
 impl UTXO {
-    pub fn new(prev_tx: Transaction, prev_block_index: u64, prev_output_index: u64) -> Self {
+    pub fn new(prev_tx: Transaction, prev_block_index: usize, prev_output_index: usize) -> Self {
         let prev_tx_hash = prev_tx.sha256();
 
         UTXO {
@@ -48,6 +48,7 @@ pub struct Wallet {
 impl Wallet {
     /// Creates a new wallet.
     /// use a random number generator to generate a public key and a secret key.
+    ///
     /// the address is the hash of the public key.
     pub fn new() -> Self {
         let (secret_key, public_key) = generate_keypair(&mut rand::thread_rng());
@@ -76,18 +77,18 @@ impl Wallet {
         let inputs: Result<Vec<Input>, RustyCoinError> = utxos
             .into_iter()
             .map(|utxo| {
+                // create corresponding unlocking script of each input
                 let unlocking_script =
-                    generate_unlock_script(&utxo.prev_tx, self.secret_key, self.public_key);
+                    Input::generate_unlock_script(&utxo.prev_tx, self.secret_key, self.public_key);
 
-                if utxo.prev_output_index >= usize::MAX as u64 {
-                    return Err(InvalidOutputIndex);
-                }
-                input_fee += utxo
-                    .prev_tx
-                    .get_output(utxo.prev_output_index as usize)
-                    .unwrap()
-                    .get_amount();
+                //if the previous transaction do not have enough outputs, return error
+                match utxo.prev_tx.get_output_by_index(utxo.prev_output_index) {
+                    // sum the input fee
+                    Some(output) => input_fee += output.get_amount(),
+                    None => return Err(InvalidOutputIndex),
+                };
 
+                // create input
                 let input = Input::new(
                     utxo.prev_tx_hash,
                     utxo.prev_block_index,
@@ -99,13 +100,15 @@ impl Wallet {
             })
             .collect();
 
-        let inputs = inputs?; // Unwrap the Result
+        let inputs = inputs?; // Unwrap the Result, return Error if exists
 
+        // create outputs
         let outputs: Vec<Output> = receivers
             .into_iter()
             .map(|(amount, address)| Output::new(amount, address.to_vec()))
             .collect();
 
+        // sum the output fee
         let output_fee: Decimal = outputs.iter().map(|output| output.get_amount()).sum();
 
         let tx_fee = input_fee - output_fee;
@@ -114,6 +117,7 @@ impl Wallet {
             return Err(InvalidInputFee);
         }
 
+        // create transaction
         let mut tx = Transaction::new(
             inputs,
             outputs,
@@ -122,6 +126,7 @@ impl Wallet {
             extra_info,
         );
 
+        // update the digest of the transaction
         tx.update_digest();
 
         Ok(tx)
@@ -135,9 +140,11 @@ impl Wallet {
         self.address
     }
 
-    /// read secret key from a file
-    /// public key can be generated from the secret key
-    /// return a Wallet
+    /// read secret key from a file,
+    ///
+    /// public key can be generated from the secret key,
+    ///
+    /// return a Wallet.
     pub fn build_from_private_key_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let content = fs::read(path)?;
 
@@ -153,7 +160,10 @@ impl Wallet {
     }
 
     /// export the private key to a file
-    /// later the wallet can be recovered from method `Wallet::build_from_private_key_file(path: &str)`
+    ///
+    /// later the wallet can be recovered from method
+    ///
+    /// `Wallet::build_from_private_key_file(path: &str)`
     pub fn save_private_key_to_file(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
         let mut file = File::create(path)?;
         file.write_all(&self.secret_key[..])?;
@@ -174,28 +184,30 @@ impl Default for Wallet {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::transaction::generate_locking_script;
+
     #[test]
     fn test_export_and_import_from_a_file() {
+        const FILE_PATH: &str = "./test_key.rscnkey";
         let wallet = Wallet::new();
-        if let Err(e) = wallet.save_private_key_to_file("./key.rscnkey") {
+        if let Err(e) = wallet.save_private_key_to_file(FILE_PATH) {
             println!("{}", e)
         };
-        let wallet_copied =
-            Wallet::build_from_private_key_file("./key.rscnkey").unwrap_or_else(|e| {
-                println!("{}", e);
-                Wallet::new()
-            });
+        let wallet_copied = Wallet::build_from_private_key_file(FILE_PATH).unwrap_or_else(|e| {
+            println!("{}", e);
+            Wallet::new()
+        });
         println!("{:?}", wallet);
         println!("{:?}", wallet_copied);
         assert_eq!(wallet, wallet_copied);
+        // delete the key file after testing
+        fs::remove_file(FILE_PATH).expect("Delete Fail: No such file");
     }
 
     /// in P2PKH, the address and the locking script is the same thing
     #[test]
     fn test_locking_script() {
         let wallet = Wallet::new();
-        let locking_script = generate_locking_script(wallet.get_public_key());
+        let locking_script = Output::generate_locking_script(wallet.get_public_key());
         let address = wallet.get_address().to_vec();
         assert_eq!(locking_script, address);
     }
@@ -204,19 +216,16 @@ mod test {
     fn test_transfer_credit() {
         let wallet1 = Wallet::new();
         let wallet2 = Wallet::new();
+        let prev_tx = Transaction::new(
+            vec![Input::new(HashValue::new([0u8; 32]), 0, 0, vec![0u8; 32])],
+            vec![Output::new(dec!(1.0), wallet1.address.to_vec())],
+            HashValue::new([0u8; 32]),
+            dec!(0.0),
+            None,
+        );
         let tx = wallet1
             .transfer_credits(
-                vec![UTXO::new(
-                    Transaction::new(
-                        vec![Input::new(HashValue::new([0u8; 32]), 0, 0, vec![0u8; 32])],
-                        vec![Output::new(dec!(1.0), vec![0u8; 32])],
-                        HashValue::new([0u8; 32]),
-                        dec!(0.0),
-                        None,
-                    ),
-                    0,
-                    0,
-                )],
+                vec![UTXO::new(prev_tx, 0, 0)],
                 vec![(dec!(0.5), wallet2.get_address())],
                 None,
             )
