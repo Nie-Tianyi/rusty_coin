@@ -7,6 +7,7 @@ pub enum RustyCoinError {
     InvalidInputFee,
     InvalidBlockIndex,
     InvalidTransactionIndex,
+    InvalidOutputAmount,
 }
 
 impl Display for RustyCoinError {
@@ -21,6 +22,7 @@ impl Display for RustyCoinError {
             ),
             RustyCoinError::InvalidBlockIndex => write!(f, "Invalid block index"),
             RustyCoinError::InvalidTransactionIndex => write!(f, "Invalid transaction index"),
+            RustyCoinError::InvalidOutputAmount => write!(f, "Invalid output amount"),
         }
     }
 }

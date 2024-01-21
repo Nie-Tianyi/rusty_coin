@@ -1,7 +1,3 @@
-use crate::errors::RustyCoinError;
-use crate::errors::RustyCoinError::{
-    InvalidBlockIndex, InvalidOutputIndex, InvalidTransactionIndex,
-};
 /// The core part of rusty coin
 /// The mining rule of rusty coin:
 ///     - 10 seconds per block, adjust difficulty every hour
@@ -162,7 +158,7 @@ pub struct Blockchain {
 impl Blockchain {
     /// create a new blockchain, including the genesis block
     pub fn new(genesis_msg: &str) -> Self {
-        let genesis_block = create_genesis_block(genesis_msg);
+        let genesis_block = Self::create_genesis_block(genesis_msg);
         Self {
             blockchain: vec![genesis_block],
             tx_pool: vec![],
@@ -201,28 +197,43 @@ impl Blockchain {
         block.hash <= target_threshold
     }
 
-    pub fn verify_transaction(&self, transaction: &Transaction) -> Result<bool, RustyCoinError> {
+    /// verify a regular transaction's integrity, check if it is valid.
+    ///
+    /// if it is a coinbase transaction, please use `fn verify_coinbase_transaction` instead.
+    /// - check if the transaction hash is equal to the transaction ID
+    /// - check if the transaction fee is valid
+    /// - check if the inputs are legal, the inputs should be unspent
+    ///     - check if the unlock script is valid
+    ///     - check if the previous transaction hash is valid
+    ///     - check if the previous output index is valid
+    pub fn verify_transaction(&self, transaction: &Transaction) -> bool {
         // check if inputs are legal:
         // - check prev_transaction_hash
         // - check unlocking_script
         let mut input_fee_sum = dec!(0.0);
         for input in transaction.get_inputs() {
-            // get previous block that contain this input tx
-            let block = self
-                .blockchain
-                .get(input.get_prev_block_index())
-                .ok_or(InvalidBlockIndex)
-                .unwrap();
-            // get the previous transaction, if it is None, then return an error
-            let prev_tx = block
-                .get_tx_by_id(input.get_prev_tx_hash())
-                .ok_or(InvalidTransactionIndex)
-                .unwrap();
-            // get the output
-            let prev_output = prev_tx
-                .get_output_by_index(input.get_prev_output_index())
-                .ok_or(InvalidOutputIndex)
-                .unwrap();
+            // get previous block that contain this input tx, if it is None, then return false
+            let block = match self.blockchain.get(input.get_prev_block_index()) {
+                Some(block) => block,
+                None => {
+                    return false;
+                }
+            };
+            // get the previous transaction, if it is None, then return false
+            let prev_tx = match block.get_tx_by_id(input.get_prev_tx_hash()) {
+                Some(prev_tx) => prev_tx,
+                None => {
+                    return false;
+                }
+            };
+            // get the output, if the index is invalid, then return false
+            let prev_output = match prev_tx.get_output_by_index(input.get_prev_output_index()) {
+                Some(prev_output) => prev_output,
+                None => {
+                    return false;
+                }
+            };
+
             input_fee_sum += prev_output.get_amount();
             // verify the unlock script
             if !Transaction::verify_scripts(
@@ -230,66 +241,70 @@ impl Blockchain {
                 prev_output.get_locking_script(),
                 input.get_unlock_script(),
             ) {
-                return Ok(false);
+                return false;
             }
         }
         // check the transaction hash, if it is equal to the transaction ID
         if transaction.get_transaction_id() != transaction.sha256() {
-            return Ok(false);
+            return false;
         }
         // check if the transaction fee is valid
         // calculate the output sum
         for output in transaction.get_outputs() {
+            // all the output amount should be positive (>= 0)
+            if output.get_amount() < dec!(0.0) {
+                return false;
+            }
             input_fee_sum -= output.get_amount();
         }
         if transaction.get_transaction_fee() != input_fee_sum {
-            return Ok(false);
+            return false;
         }
 
-        Ok(true)
+        true
+    }
+
+    fn create_genesis_block(init_msg: &str) -> Block {
+        let init_time = match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(duration) => duration.as_secs(),
+            Err(e) => {
+                println!("SystemTimeError: {}", e);
+                0u64
+            }
+        };
+
+        let mut genesis_transaction = Transaction::new(
+            vec![],
+            vec![],
+            HashValue::new([0u8; 32]),
+            dec!(0.0),
+            Some(init_msg.as_bytes().to_vec()),
+        );
+
+        genesis_transaction.update_digest(); // update genesis transaction's digest (transaction_id, hash value of the transaction)
+
+        let mut genesis_block = Block {
+            version: 0.1f64,
+            index: 0,
+            data: vec![genesis_transaction],
+            timestamp: init_time,
+            prev_hash: HashValue::new([0; 32]),
+            hash: HashValue::new([0; 32]),
+            merkle_root: HashValue::new([0; 32]),
+            difficulty: 0,
+            nonce: 0,
+        };
+
+        genesis_block.merkle_root = genesis_block.merkle_root(); // update merkle root of the genesis block
+        genesis_block.hash = genesis_block.sha256(); // update hash value of the genesis block
+        genesis_block
     }
 }
 
 impl Default for Blockchain {
     fn default() -> Self {
-        Self::new("")
+        Self::new("Default Blockchain")
     }
-}
-
-fn create_genesis_block(init_msg: &str) -> Block {
-    let init_time = match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(duration) => duration.as_secs(),
-        Err(e) => {
-            println!("SystemTimeError: {}", e);
-            0u64
-        }
-    };
-
-    let mut genesis_transaction = Transaction::new(
-        vec![],
-        vec![],
-        HashValue::new([0u8; 32]),
-        dec!(0.0),
-        Some(init_msg.as_bytes().to_vec()),
-    );
-
-    genesis_transaction.update_digest(); // update genesis transaction's digest (transaction_id, hash value of the transaction)
-
-    let mut genesis_block = Block {
-        version: 0.1f64,
-        index: 0,
-        data: vec![genesis_transaction],
-        timestamp: init_time,
-        prev_hash: HashValue::new([0; 32]),
-        hash: HashValue::new([0; 32]),
-        merkle_root: HashValue::new([0; 32]),
-        difficulty: 0,
-        nonce: 0,
-    };
-
-    genesis_block.merkle_root = genesis_block.merkle_root(); // update merkle root of the genesis block
-    genesis_block.hash = genesis_block.sha256(); // update hash value of the genesis block
-    genesis_block
 }
 
 #[cfg(test)]
