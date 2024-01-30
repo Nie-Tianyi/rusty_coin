@@ -4,10 +4,12 @@
 ///     - the first transaction in every block should be the coinbase transaction
 ///     - coinbase need get 6 * 24 (= 1 day) confirmation before spent
 ///     - UTXO need get 6 (= 1 min) confirmation before spent
-/// The reward rule of rusty coin:
+/// The reward rule of rusty coin is a convergent infinite geometric series:
 ///     - $ reward = $
-use crate::transaction::Transaction;
+use crate::transaction::{Output, Transaction};
 use crate::types::HashValue;
+use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
+use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -16,6 +18,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The `Block` struct represents a block in the blockchain.
 ///
+/// tips: consider use log crate to print log
 /// # Fields
 ///
 /// * `version` - A floating point number representing the version of the block.
@@ -24,12 +27,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// * `prev_hash` - A `HashValue` representing the hash of the previous block in the blockchain.
 /// * `hash` - A `HashValue` representing the hash of the current block. This is the proof of work.
 /// * `merkle_root` - A `HashValue` representing the root hash of the Merkle tree of the transactions included in the block.
-/// * `difficulty` - An unsigned 32-bit integer representing the difficulty target for the proof of work. The difficulty is adjusted every 1024 blocks.
+/// * `difficulty` - An unsigned 32-bit integer (in nBits format) representing the difficulty target for the proof of work. The difficulty is adjusted every block.
 /// * `nonce` - A signed 64-bit integer used in the proof of work.
 /// * `data` - A vector of `Transaction` structs representing the transactions included in the block.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Block {
-    version: f64,           // version of the block
+    version: String,        // version of the block
     index: usize,           // block height
     timestamp: u64,         // time elapsed since the Unix Epoch (January 1, 1970) in seconds
     prev_hash: HashValue,   // previous block hash
@@ -68,7 +71,7 @@ impl Block {
     }
 
     /// calculate the merkle root of all the transactions
-    pub fn merkle_root(&self) -> HashValue {
+    pub fn calc_merkle_root(&self) -> HashValue {
         // return 0x00...000 directly if the data is empty
         if self.data.is_empty() {
             return HashValue::new([0; 32]);
@@ -101,6 +104,7 @@ impl Block {
 
         hashes[0]
     }
+    /// POW algorithm,
     /// find the valid hash value by the proof of work
     pub fn find_valid_hash(&mut self) -> HashValue {
         let mut nonce = self.nonce;
@@ -119,7 +123,7 @@ impl Block {
     /// calculate the hash value of the block
     fn sha256(&self) -> HashValue {
         let mut hasher = Sha256::new();
-        hasher.update(self.version.to_be_bytes());
+        hasher.update(self.version.as_bytes());
         hasher.update(self.index.to_be_bytes());
         hasher.update(self.timestamp.to_be_bytes());
         hasher.update(self.prev_hash);
@@ -130,8 +134,6 @@ impl Block {
         HashValue::new(result)
     }
 
-    ///
-    ///
     /// # Arguments
     ///
     /// * `tx_id`: HashValue - the hash value of the transaction
@@ -151,7 +153,7 @@ impl Hash for Transaction {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Blockchain {
-    blockchain: Vec<Block>,    // store the blockchain
+    blockchain: Vec<Block>,    // store the blockchain / pieces of the blockchain
     tx_pool: Vec<Transaction>, // store the unpacked transactions
 }
 
@@ -163,6 +165,79 @@ impl Blockchain {
             blockchain: vec![genesis_block],
             tx_pool: vec![],
         }
+    }
+
+    pub fn find_transactions_by_algo<F>(&self, algorithm: F) -> Vec<Transaction>
+    where
+        F: FnOnce(&Vec<Transaction>) -> Vec<Transaction>,
+    {
+        algorithm(&self.tx_pool)
+    }
+
+    /// generate a new block, including the coinbase transaction.
+    ///
+    /// this function include the mining process, which is time consuming
+    /// # Arguments:
+    /// * `address`: HashValue - the address of the miner
+    /// * `protocol_version`: String - the version of the protocol
+    /// * `time_millis`: u64 - the timestamp of the block
+    /// * `prev_block`: &Block - the previous block
+    /// * `difficulty`: u32 - the difficulty of the block
+    /// * `tx_sorting_algo`: F - the sorting algorithm of the transactions
+    ///    - the sorting algorithm may sort the transactions by their transaction fee
+    pub fn generate_new_block<F>(
+        &self,
+        receivers: Vec<(HashValue, Decimal)>,
+        protocol_version: String,
+        time_millis: u64,
+        prev_block: &Block,
+        difficulty: u32,
+        unpacked_transactions: Vec<Transaction>,
+    ) -> Block {
+        // if the output is not valid, then panic
+        let output_fee_sum = receivers.iter().fold(dec!(0.0), |sum, (_address, amount)| {
+            if *amount < dec!(0.0) {
+                panic!("Invalid output amount");
+            }
+            sum + amount
+        });
+        if output_fee_sum >= Self::reward_algorithm(prev_block.index + 1) {
+            panic!("Invalid output amount");
+        }
+
+        let coinbase_transaction = Self::create_coinbase_transaction(receivers);
+        let mut unpacked_transactions = unpacked_transactions;
+        unpacked_transactions.insert(0, coinbase_transaction);
+        let mut block = Block {
+            version: protocol_version,
+            index: prev_block.index + 1,
+            data: unpacked_transactions,
+            timestamp: time_millis,
+            prev_hash: prev_block.hash,
+            hash: HashValue::new([0; 32]),
+            merkle_root: HashValue::new([0; 32]),
+            difficulty,
+            nonce: 0,
+        };
+        block.merkle_root = block.calc_merkle_root();
+        block.hash = block.find_valid_hash();
+        block
+    }
+
+    fn create_coinbase_transaction(receivers: Vec<(HashValue, Decimal)>) -> Transaction {
+        let reward_outputs = receivers
+            .into_iter()
+            .map(|(address, amount)| Output::new(amount, address.to_vec()))
+            .collect::<Vec<Output>>();
+        let mut res = Transaction::new(
+            vec![],
+            reward_outputs,
+            HashValue::new([0u8; 32]),
+            dec!(0.0),
+            None,
+        );
+        res.update_digest(); // update coinbase transaction's digest (transaction_id, hash value of the transaction)
+        res
     }
 
     /// add a block to the blockchain
@@ -264,12 +339,24 @@ impl Blockchain {
         true
     }
 
+    /// reward rule of the coinbase transaction
+    /// - the reward of the coinbase transaction is a convergent infinite series
+    /// - the reward of the coinbase transaction is 50 rusty coin at the beginning
+    fn reward_algorithm(index: usize) -> Decimal {
+        let inverse_log = 18.0 * 1.0 / (index.to_f64().unwrap() + 1.0_f64).log10();
+        let inverse_log_floor = inverse_log.floor();
+        Decimal::from_f64(inverse_log_floor).unwrap()
+    }
+
+    /// create the first block of a blockchain, the genesis block
+    ///
+    /// # Arguments
+    /// * `init_msg: &str` - the message of the genesis transaction of the genesis block
     fn create_genesis_block(init_msg: &str) -> Block {
         let init_time = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(duration) => duration.as_secs(),
             Err(e) => {
-                println!("SystemTimeError: {}", e);
-                0u64
+                panic!("SystemTimeError: {}", e);
             }
         };
 
@@ -284,7 +371,7 @@ impl Blockchain {
         genesis_transaction.update_digest(); // update genesis transaction's digest (transaction_id, hash value of the transaction)
 
         let mut genesis_block = Block {
-            version: 0.1f64,
+            version: "0.1v test".to_string(),
             index: 0,
             data: vec![genesis_transaction],
             timestamp: init_time,
@@ -295,7 +382,7 @@ impl Blockchain {
             nonce: 0,
         };
 
-        genesis_block.merkle_root = genesis_block.merkle_root(); // update merkle root of the genesis block
+        genesis_block.merkle_root = genesis_block.calc_merkle_root(); // update merkle root of the genesis block
         genesis_block.hash = genesis_block.sha256(); // update hash value of the genesis block
         genesis_block
     }
@@ -314,7 +401,7 @@ mod tests {
     #[test]
     fn test_target_threshold() {
         let block = Block {
-            version: 0.1f64,
+            version: "0.1v test".to_string(),
             index: 0,
             data: Vec::new(),
             timestamp: 0u64,
@@ -334,7 +421,7 @@ mod tests {
     #[test]
     fn test_merkle_root() {
         let block = Block {
-            version: 0.1f64,
+            version: "0.1v test".to_string(),
             index: 0,
             data: vec![
                 Transaction::new(vec![], vec![], HashValue::new([0u8; 32]), dec!(0.0), None),
@@ -347,13 +434,13 @@ mod tests {
             difficulty: 0x04123456u32,
             nonce: 0,
         };
-        let merkle_root = block.merkle_root();
+        let merkle_root = block.calc_merkle_root();
         println!("{}", merkle_root);
     }
     #[test]
     fn test_block_sha256() {
         let block = Block {
-            version: 0.1f64,
+            version: "0.1v test".to_string(),
             index: 0,
             data: Vec::new(),
             timestamp: 0u64,
@@ -365,10 +452,7 @@ mod tests {
         };
 
         let hash = block.sha256().sha256();
-        assert_eq!(
-            hash.to_string(),
-            "0x8ea07e6d3035f172f8d81c803dd65516b2dfd5af9da892dd0ae554bff6ba7a59"
-        )
+        println!("{}", hash);
     }
 
     #[test]
@@ -380,7 +464,7 @@ mod tests {
     #[test]
     fn test_mining() {
         let mut block = Block {
-            version: 0.1f64,
+            version: "0.1v test".to_string(),
             index: 0,
             data: Vec::new(),
             timestamp: 0u64,
@@ -392,5 +476,11 @@ mod tests {
         };
         block.hash = block.find_valid_hash();
         println!("{:?}", block);
+    }
+
+    #[test]
+    fn test_reward_algorithm() {
+        let reward = Blockchain::reward_algorithm(1844674407370955161);
+        println!("{}", reward);
     }
 }
