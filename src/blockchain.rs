@@ -1,3 +1,4 @@
+use crate::block::Block;
 /// The core part of rusty coin
 /// The mining rule of rusty coin:
 ///     - 10 seconds per block, adjust difficulty every hour
@@ -12,166 +13,8 @@ use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::fmt::Display;
-use std::hash::{Hash, Hasher};
 use std::time::{SystemTime, UNIX_EPOCH};
-
-/// The `Block` struct represents a block in the blockchain.
-///
-/// tips: consider use log crate to print log
-/// # Fields
-///
-/// * `version` - A floating point number representing the version of the block.
-/// * `index` - An unsigned 64-bit integer representing the block number.
-/// * `timestamp` - An unsigned 64-bit integer representing the time the block was created, in seconds since the Unix Epoch (January 1, 1970).
-/// * `prev_hash` - A `HashValue` representing the hash of the previous block in the blockchain.
-/// * `hash` - A `HashValue` representing the hash of the current block. This is the proof of work.
-/// * `merkle_root` - A `HashValue` representing the root hash of the Merkle tree of the transactions included in the block.
-/// * `difficulty` - An unsigned 32-bit integer (in nBits format) representing the difficulty target for the proof of work. The difficulty is adjusted every block.
-/// * `nonce` - A signed 64-bit integer used in the proof of work.
-/// * `data` - A vector of `Transaction` structs representing the transactions included in the block.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct Block {
-    version: String,        // version of the block
-    index: usize,           // block height
-    timestamp: u64,         // time elapsed since the Unix Epoch (January 1, 1970) in seconds
-    prev_hash: HashValue,   // previous block hash
-    hash: HashValue,        // hash value of current block
-    merkle_root: HashValue, // merkle root of all the transactions
-    difficulty: u32,        // difficulty target for the proof of work, adjusted every 1024 blocks
-    nonce: i64,             // random number
-    data: Vec<Transaction>, // transactions
-}
-
-impl Block {
-    /// calculate the target difficulty by the nBits in `difficulty`
-    ///
-    /// $ target\ threshold = b_2b_3b_4 \times 2^{8(b_1 - 3)} $
-    #[allow(clippy::identity_op)]
-    pub fn target_threshold(&self) -> HashValue {
-        let n_bit_bytes: [u8; 4] = self.difficulty.to_be_bytes();
-        let mut target = [0u8; 32];
-        let exp: isize = n_bit_bytes[0] as isize - 3;
-
-        let mut i = 0usize;
-        while i < 32 {
-            if i == (32 - exp - 2 - 1) as usize {
-                target[i] = n_bit_bytes[1];
-            } else if i == (32 - exp - 1 - 1) as usize {
-                target[i] = n_bit_bytes[2];
-            } else if i == (32 - exp - 0 - 1) as usize {
-                target[i] = n_bit_bytes[3];
-            } else {
-                target[i] = 0x00;
-            }
-            i += 1;
-        }
-
-        HashValue::new(target)
-    }
-
-    /// calculate the merkle root of all the transactions
-    pub fn calc_merkle_root(&self) -> HashValue {
-        // return 0x00...000 directly if the data is empty
-        if self.data.is_empty() {
-            return HashValue::new([0; 32]);
-        }
-
-        //calculate all the transactions' hash value
-        let mut hashes = self
-            .data
-            .iter()
-            .map(|transaction| transaction.sha256())
-            .collect::<Vec<HashValue>>();
-
-        // construct a merkle tree
-        while hashes.len() > 1 {
-            hashes = hashes
-                .chunks(2)
-                .map(|chunk| match *chunk {
-                    [hash] => hash,
-                    [hash1, hash2] => {
-                        let mut hasher = Sha256::new();
-                        hasher.update(hash1);
-                        hasher.update(hash2);
-                        let result = hasher.finalize().into();
-                        HashValue::new(result)
-                    }
-                    _ => unreachable!(), // panic immediately if none of the previous pattern get matched
-                })
-                .collect::<Vec<HashValue>>();
-        }
-
-        hashes[0]
-    }
-    /// POW algorithm,
-    /// find the valid hash value by the proof of work
-    pub fn find_valid_hash(&mut self) -> HashValue {
-        let mut nonce = self.nonce;
-        let target_threshold = self.target_threshold();
-        let mut valid_hash = self.sha256().sha256();
-
-        while valid_hash > target_threshold {
-            nonce += 1;
-            self.nonce = nonce;
-            valid_hash = self.sha256().sha256();
-            // println!("nonce: {}, hash: {}", nonce, valid_hash)
-        }
-        valid_hash
-    }
-
-    /// calculate the hash value of the block
-    fn sha256(&self) -> HashValue {
-        let mut hasher = Sha256::new();
-        hasher.update(self.version.as_bytes());
-        hasher.update(self.index.to_be_bytes());
-        hasher.update(self.timestamp.to_be_bytes());
-        hasher.update(self.prev_hash);
-        hasher.update(self.merkle_root);
-        hasher.update(self.difficulty.to_be_bytes());
-        hasher.update(self.nonce.to_be_bytes());
-        let result = hasher.finalize().into();
-        HashValue::new(result)
-    }
-
-    /// # Arguments
-    ///
-    /// * `tx_id`: HashValue - the hash value of the transaction
-    ///
-    /// returns: Option<&Transaction>
-    fn get_tx_by_id(&self, tx_id: HashValue) -> Option<&Transaction> {
-        self.data.iter().find(|tx| tx.get_transaction_id() == tx_id)
-    }
-}
-
-impl Display for Block {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Block[{}]:", self.index)?;
-        writeln!(f, "\tversion: {}", self.version)?;
-        writeln!(f, "\ttimestamp: {}", self.timestamp)?;
-        writeln!(f, "\tprev_hash: {}", self.prev_hash)?;
-        writeln!(f, "\thash: {}", self.hash)?;
-        writeln!(f, "\tmerkle_root: {}", self.merkle_root)?;
-        writeln!(f, "\tdifficulty: {}", self.difficulty)?;
-        writeln!(f, "\tnonce: {}", self.nonce)?;
-        writeln!(f, "\tdata: [")?;
-        for tx in self.data.iter() {
-            let tx_str = format!("{}", tx);
-            for line in tx_str.lines() {
-                writeln!(f, "\t\t{}", line)?;
-            }
-        }
-        writeln!(f, "\t]")
-    }
-}
-
-impl Hash for Transaction {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        let hash = self.sha256();
-        hash.iter().for_each(|byte| state.write_u8(*byte));
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Blockchain {
@@ -196,6 +39,15 @@ impl Blockchain {
         algorithm(&self.tx_pool)
     }
 
+    /// get the latest reward of the blockchain
+    pub fn get_latest_reward(&self, unpacked_transactions: &[Transaction]) -> Decimal {
+        let aggregate_tx_fee = unpacked_transactions
+            .iter()
+            .fold(dec!(0.0), |sum, tx| sum + tx.get_transaction_fee());
+        let reward = Self::reward_algorithm(self.get_last_block().unwrap().index + 1);
+        reward + aggregate_tx_fee
+    }
+
     /// generate a new block, including the coinbase transaction.
     ///
     /// this function include the mining process, which is time consuming
@@ -212,10 +64,10 @@ impl Blockchain {
         receivers: Vec<(HashValue, Decimal)>,
         protocol_version: String,
         time_millis: u64,
-        prev_block: &Block,
         difficulty: u32,
         unpacked_transactions: Vec<Transaction>,
     ) -> Block {
+        let prev_block = self.get_last_block().unwrap();
         // if the output is not valid, then panic
         let output_fee_sum = receivers.iter().fold(dec!(0.0), |sum, (_address, amount)| {
             if *amount < dec!(0.0) {
@@ -223,7 +75,7 @@ impl Blockchain {
             }
             sum + amount
         });
-        if output_fee_sum >= Self::reward_algorithm(prev_block.index + 1) {
+        if output_fee_sum > Self::reward_algorithm(prev_block.index + 1) {
             panic!("Invalid output amount");
         }
 
@@ -459,11 +311,11 @@ mod tests {
                 Transaction::new(vec![], vec![], HashValue::new([0u8; 32]), dec!(0.0), None),
                 Transaction::new(vec![], vec![], HashValue::new([0u8; 32]), dec!(0.0), None),
             ],
-            timestamp: 0u64,
+            timestamp: 0_u64,
             prev_hash: HashValue::new([0; 32]),
             hash: HashValue::new([0; 32]),
             merkle_root: HashValue::new([0; 32]),
-            difficulty: 0x04123456u32,
+            difficulty: 0x04123456_u32,
             nonce: 0,
         };
         let merkle_root = block.calc_merkle_root();
@@ -475,11 +327,11 @@ mod tests {
             version: "0.1v test".to_string(),
             index: 0,
             data: Vec::new(),
-            timestamp: 0u64,
+            timestamp: 0_u64,
             prev_hash: HashValue::new([0; 32]),
             hash: HashValue::new([0; 32]),
             merkle_root: HashValue::new([0; 32]),
-            difficulty: 0x04123456u32,
+            difficulty: 0x04123456_u32,
             nonce: 143,
         };
 
@@ -499,7 +351,7 @@ mod tests {
             version: "0.1v test".to_string(),
             index: 0,
             data: Vec::new(),
-            timestamp: 0u64,
+            timestamp: 0_u64,
             prev_hash: HashValue::new([0; 32]),
             hash: HashValue::new([0; 32]),
             merkle_root: HashValue::new([0; 32]),
@@ -519,14 +371,14 @@ mod tests {
     #[test]
     fn test_generate_new_block() {
         let mut blockchain = Blockchain::new("hello world");
+        let latest_reward_fee = blockchain.get_latest_reward(&[]);
         let block = blockchain.generate_new_block(
-            vec![(HashValue::new([0u8; 32]), dec!(0.0))],
+            vec![(HashValue::new([0u8; 32]), latest_reward_fee)],
             "0.1v test".to_string(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
-            blockchain.get_last_block().unwrap(),
             0x1E123456_u32,
             vec![],
         );

@@ -4,6 +4,7 @@ use secp256k1::{ecdsa::Signature, Message, PublicKey, SecretKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt::Display;
+use std::hash::{Hash, Hasher};
 
 /// Represents a transaction in the blockchain.
 /// Pay2PubKeyHash(P2PKH) is used as the locking script.
@@ -180,6 +181,13 @@ impl Display for Transaction {
         }
         writeln!(f, "Additional Data: {:?}", self.additional_data)?;
         Ok(())
+    }
+}
+
+impl Hash for Transaction {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let hash = self.sha256();
+        hash.iter().for_each(|byte| state.write_u8(*byte));
     }
 }
 
