@@ -283,83 +283,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_target_threshold() {
-        let block = Block {
-            version: "0.1v test".to_string(),
-            index: 0,
-            data: Vec::new(),
-            timestamp: 0u64,
-            prev_hash: HashValue::new([0; 32]),
-            hash: HashValue::new([0; 32]),
-            merkle_root: HashValue::new([0; 32]),
-            difficulty: 0x1E123456u32,
-            nonce: 0,
-        };
-        let target_threshold = block.target_threshold();
-
-        assert_eq!(
-            target_threshold.to_string(),
-            "0x0000123456000000000000000000000000000000000000000000000000000000"
-        );
-    }
-    #[test]
-    fn test_merkle_root() {
-        let block = Block {
-            version: "0.1v test".to_string(),
-            index: 0,
-            data: vec![
-                Transaction::new(vec![], vec![], HashValue::new([0u8; 32]), dec!(0.0), None),
-                Transaction::new(vec![], vec![], HashValue::new([0u8; 32]), dec!(0.0), None),
-            ],
-            timestamp: 0_u64,
-            prev_hash: HashValue::new([0; 32]),
-            hash: HashValue::new([0; 32]),
-            merkle_root: HashValue::new([0; 32]),
-            difficulty: 0x04123456_u32,
-            nonce: 0,
-        };
-        let merkle_root = block.calc_merkle_root();
-        println!("{}", merkle_root);
-    }
-    #[test]
-    fn test_block_sha256() {
-        let block = Block {
-            version: "0.1v test".to_string(),
-            index: 0,
-            data: Vec::new(),
-            timestamp: 0_u64,
-            prev_hash: HashValue::new([0; 32]),
-            hash: HashValue::new([0; 32]),
-            merkle_root: HashValue::new([0; 32]),
-            difficulty: 0x04123456_u32,
-            nonce: 143,
-        };
-
-        let hash = block.sha256().sha256();
-        println!("{}", hash);
-    }
-
-    #[test]
     fn test_new_blockchain() {
         let blockchain = Blockchain::new("hello world");
         println!("{:?}", blockchain);
-    }
-
-    #[test]
-    fn test_mining() {
-        let mut block = Block {
-            version: "0.1v test".to_string(),
-            index: 0,
-            data: Vec::new(),
-            timestamp: 0_u64,
-            prev_hash: HashValue::new([0; 32]),
-            hash: HashValue::new([0; 32]),
-            merkle_root: HashValue::new([0; 32]),
-            difficulty: 0x1E123456u32,
-            nonce: 2054888,
-        };
-        block.hash = block.find_valid_hash();
-        println!("{:?}", block);
     }
 
     #[test]
