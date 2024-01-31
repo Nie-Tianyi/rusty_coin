@@ -13,6 +13,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -144,6 +145,27 @@ impl Block {
     }
 }
 
+impl Display for Block {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Block[{}]:", self.index)?;
+        writeln!(f, "\tversion: {}", self.version)?;
+        writeln!(f, "\ttimestamp: {}", self.timestamp)?;
+        writeln!(f, "\tprev_hash: {}", self.prev_hash)?;
+        writeln!(f, "\thash: {}", self.hash)?;
+        writeln!(f, "\tmerkle_root: {}", self.merkle_root)?;
+        writeln!(f, "\tdifficulty: {}", self.difficulty)?;
+        writeln!(f, "\tnonce: {}", self.nonce)?;
+        writeln!(f, "\tdata: [")?;
+        for tx in self.data.iter() {
+            let tx_str = format!("{}", tx);
+            for line in tx_str.lines() {
+                writeln!(f, "\t\t{}", line)?;
+            }
+        }
+        writeln!(f, "\t]")
+    }
+}
+
 impl Hash for Transaction {
     fn hash<H: Hasher>(&self, state: &mut H) {
         let hash = self.sha256();
@@ -185,7 +207,7 @@ impl Blockchain {
     /// * `difficulty`: u32 - the difficulty of the block
     /// * `tx_sorting_algo`: F - the sorting algorithm of the transactions
     ///    - the sorting algorithm may sort the transactions by their transaction fee
-    pub fn generate_new_block<F>(
+    pub fn generate_new_block(
         &self,
         receivers: Vec<(HashValue, Decimal)>,
         protocol_version: String,
@@ -394,6 +416,16 @@ impl Default for Blockchain {
     }
 }
 
+impl Display for Blockchain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "[Blockchain]:")?;
+        for block in self.blockchain.iter() {
+            write!(f, "{}\n\n\n", block)?;
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -482,5 +514,23 @@ mod tests {
     fn test_reward_algorithm() {
         let reward = Blockchain::reward_algorithm(1844674407370955161);
         println!("{}", reward);
+    }
+
+    #[test]
+    fn test_generate_new_block() {
+        let mut blockchain = Blockchain::new("hello world");
+        let block = blockchain.generate_new_block(
+            vec![(HashValue::new([0u8; 32]), dec!(0.0))],
+            "0.1v test".to_string(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            blockchain.get_last_block().unwrap(),
+            0x1E123456_u32,
+            vec![],
+        );
+        blockchain.add_block(block);
+        println!("{}", blockchain);
     }
 }

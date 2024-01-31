@@ -5,6 +5,13 @@ use std::ops::Deref;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+pub fn bytes_vec_to_hex_string(bytes: &[u8]) -> String {
+    let s = bytes
+        .iter()
+        .fold("0x".to_string(), |res, b| res + &format!("{:02x}", b));
+    s
+}
+
 pub type HashValue = Bytes<32>;
 
 impl HashValue {

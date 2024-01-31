@@ -1,8 +1,9 @@
-use crate::types::HashValue;
+use crate::types::{bytes_vec_to_hex_string, HashValue};
 use rust_decimal::Decimal;
 use secp256k1::{ecdsa::Signature, Message, PublicKey, SecretKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::fmt::Display;
 
 /// Represents a transaction in the blockchain.
 /// Pay2PubKeyHash(P2PKH) is used as the locking script.
@@ -136,6 +137,49 @@ impl Transaction {
         }
 
         true
+    }
+}
+
+impl Display for Transaction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Transaction ID: {}", self.transaction_id)?;
+        writeln!(f, "Transaction Fee: {}", self.transaction_fee)?;
+        writeln!(f, "Inputs:")?;
+        for input in &self.inputs {
+            writeln!(
+                f,
+                "\tPrevious Transaction Hash: {}",
+                input.prev_transaction_hash
+            )?;
+            writeln!(f, "\tPrevious Block Index: {}", input.prev_block_index)?;
+            writeln!(f, "\tPrevious Output Index: {}", input.prev_output_index)?;
+            writeln!(
+                f,
+                "\tLength of Unlock Script: {}",
+                input.length_of_unlock_script
+            )?;
+            writeln!(
+                f,
+                "\tUnlock Script: {}",
+                bytes_vec_to_hex_string(&input.unlock_script)
+            )?;
+        }
+        writeln!(f, "Outputs:")?;
+        for output in &self.outputs {
+            writeln!(f, "\tAmount: {}", output.amount)?;
+            writeln!(
+                f,
+                "\tLength of Locking Script: {}",
+                output.length_of_locking_script
+            )?;
+            writeln!(
+                f,
+                "\tLocking Script: {}",
+                bytes_vec_to_hex_string(&output.locking_script)
+            )?;
+        }
+        writeln!(f, "Additional Data: {:?}", self.additional_data)?;
+        Ok(())
     }
 }
 
