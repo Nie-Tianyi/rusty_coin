@@ -142,49 +142,54 @@ impl Blockchain {
     /// - check the hash value of the block
     /// - check the timestamp of the block
     pub fn verify_block(&self, block: &Block, network_difficulty: u32) -> bool {
-        // check all the transaction in the block
-        for transaction in block.data.iter() {
-            if Transaction::is_coinbase_transaction(transaction) {
-                let aggregate_tx_fee = block
-                    .data
-                    .iter()
-                    .skip(1) // skip the coinbase transaction
-                    .fold(dec!(0.0), |sum, tx| sum + tx.get_transaction_fee());
-                if !self.verify_coinbase_transaction(transaction, block.index, aggregate_tx_fee) {
-                    return false;
-                }
-            } else if !self.verify_regular_transaction(transaction) {
-                return false;
-            };
-        }
-        // check the merkle root of the block
-        if block.merkle_root != block.calc_merkle_root() {
-            return false;
-        }
-        // check the difficulty of the block
-        if block.difficulty != network_difficulty {
-            return false;
-        }
-        // check the hash value of the block
-        if block.sha256().sha256() != block.hash {
-            return false;
-        }
-        if block.hash > block.target_threshold() {
-            return false;
-        }
-        // check the timestamp of the block
-        if !self.verify_timestamp(block.timestamp) {
-            return false;
-        }
+        self.verify_transactions(&block.data, block.index)
+            && self.verify_merkle_root(block)
+            && self.verify_difficulty(block, network_difficulty)
+            && self.verify_block_hash(block)
+            && self.verify_timestamp(block.timestamp)
+    }
 
-        true
+    pub fn verify_transactions(&self, transactions: &[Transaction], block_index: usize) -> bool {
+        transactions.iter().all(|tx| {
+            if Transaction::is_coinbase_transaction(tx) {
+                self.verify_coinbase_transaction(tx, transactions, block_index)
+            } else {
+                self.verify_regular_transaction(tx)
+            }
+        })
+    }
+
+    fn verify_coinbase_transaction(
+        &self,
+        coinbase_tx: &Transaction,
+        transactions: &[Transaction],
+        block_index: usize,
+    ) -> bool {
+        let aggregate_tx_fee = transactions
+            .iter()
+            .skip(1) // skip the coinbase transaction
+            .fold(dec!(0.0), |sum, tx| sum + tx.get_transaction_fee());
+
+        self.verify_coinbase_transaction_reward_fee(coinbase_tx, block_index, aggregate_tx_fee)
+    }
+
+    fn verify_merkle_root(&self, block: &Block) -> bool {
+        block.merkle_root == block.calc_merkle_root()
+    }
+
+    fn verify_difficulty(&self, block: &Block, network_difficulty: u32) -> bool {
+        block.difficulty == network_difficulty
+    }
+
+    fn verify_block_hash(&self, block: &Block) -> bool {
+        block.sha256().sha256() == block.hash && block.hash <= block.target_threshold()
     }
 
     /// verify timestamp (in seconds, UTC +0:00) of the block:
     /// the timestamp of the block should be less than the current time
     /// and the timestamp of the block should be larger than the average timestamps of the previous 10 blocks
     /// (if there are less than 10 blocks, then use the average timestamps of all the previous blocks)
-    pub fn verify_timestamp(&self, timestamp: u64) -> bool {
+    fn verify_timestamp(&self, timestamp: u64) -> bool {
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -212,7 +217,7 @@ impl Blockchain {
     /// * `aggregate_tx_fee`: Decimal - the sum of transaction fee of all the transactions in the block
     /// # Returns:
     /// * `bool` - if the transaction is valid, return true, else return false
-    pub fn verify_coinbase_transaction(
+    fn verify_coinbase_transaction_reward_fee(
         &self,
         tx: &Transaction,
         block_index: usize,
@@ -249,7 +254,7 @@ impl Blockchain {
     /// * `transaction`: &Transaction - the transaction to be verified
     ///
     /// returns: bool - if the transaction is valid, return true, else return false
-    pub fn verify_regular_transaction(&self, transaction: &Transaction) -> bool {
+    fn verify_regular_transaction(&self, transaction: &Transaction) -> bool {
         // check if inputs are legal:
         // - check prev_transaction_hash
         // - check unlocking_script
