@@ -159,6 +159,15 @@ impl Blockchain {
         })
     }
 
+    /// verify a coinbase transaction's integrity, check if it is valid.
+    /// - check if the transaction hash is equal to the transaction ID
+    /// - check if the reward is valid
+    ///
+    /// # Arguments:
+    /// * `coinbase_tx`: &Transaction - the coinbase transaction to be verified
+    /// * `transactions`: &[Transaction] - all the transactions in the block
+    /// * `block_index`: usize - the index of the block
+    /// returns: bool - if the coinbase transaction is valid, return true, else return false
     fn verify_coinbase_transaction(
         &self,
         coinbase_tx: &Transaction,
@@ -170,7 +179,22 @@ impl Blockchain {
             .skip(1) // skip the coinbase transaction
             .fold(dec!(0.0), |sum, tx| sum + tx.get_transaction_fee());
 
-        self.verify_coinbase_transaction_reward_fee(coinbase_tx, block_index, aggregate_tx_fee)
+        // check if the transaction hash is equal to the transaction ID
+        if coinbase_tx.sha256() != coinbase_tx.get_transaction_id() {
+            return false;
+        }
+        // check if the reward is valid
+        let reward = Self::reward_algorithm(block_index + 1);
+
+        let mut output_fee_sum = dec!(0.0);
+        for output in coinbase_tx.get_outputs() {
+            if output.get_amount() < dec!(0.0) {
+                return false;
+            }
+            output_fee_sum += output.get_amount();
+        }
+
+        output_fee_sum <= reward + aggregate_tx_fee
     }
 
     fn verify_merkle_root(&self, block: &Block) -> bool {
@@ -207,39 +231,6 @@ impl Blockchain {
         average_timestamp < timestamp && timestamp < current_time
     }
 
-    /// verify a coinbase transaction's integrity, check if it is valid.
-    /// - check if the transaction hash is equal to the transaction ID
-    /// - check if the reward is valid
-    ///
-    /// # Arguments:
-    /// * `tx`: &Transaction - the coinbase transaction to be verified
-    /// * `block_index`: usize - the index of the block that contains this transaction
-    /// * `aggregate_tx_fee`: Decimal - the sum of transaction fee of all the transactions in the block
-    /// # Returns:
-    /// * `bool` - if the transaction is valid, return true, else return false
-    fn verify_coinbase_transaction_reward_fee(
-        &self,
-        tx: &Transaction,
-        block_index: usize,
-        aggregate_tx_fee: Decimal,
-    ) -> bool {
-        // check if the transaction hash is equal to the transaction ID
-        if tx.sha256() != tx.get_transaction_id() {
-            return false;
-        }
-        // check if the reward is valid
-        let reward = Self::reward_algorithm(block_index + 1);
-
-        let mut output_fee_sum = dec!(0.0);
-        for output in tx.get_outputs() {
-            if output.get_amount() < dec!(0.0) {
-                return false;
-            }
-            output_fee_sum += output.get_amount();
-        }
-
-        output_fee_sum <= reward + aggregate_tx_fee
-    }
     /// verify a regular transaction's integrity, check if it is valid.
     ///
     /// if it is a coinbase transaction, please use `fn verify_coinbase_transaction` instead.
