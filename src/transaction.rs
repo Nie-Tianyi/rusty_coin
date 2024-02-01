@@ -102,7 +102,9 @@ impl Transaction {
     pub fn get_transaction_id(&self) -> HashValue {
         self.transaction_id
     }
-
+    pub fn is_coinbase_transaction(tx: &Transaction) -> bool {
+        tx.get_inputs().is_empty()
+    }
     pub fn verify_scripts(
         prev_transaction: &Transaction,
         unlocking_script: &[u8],
