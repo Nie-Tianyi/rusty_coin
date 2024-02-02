@@ -180,7 +180,7 @@ impl Blockchain {
             .fold(dec!(0.0), |sum, tx| sum + tx.get_transaction_fee());
 
         // check if the transaction hash is equal to the transaction ID
-        if dbg!(coinbase_tx.sha256() != coinbase_tx.get_transaction_id()) {
+        if coinbase_tx.sha256() != coinbase_tx.get_transaction_id() {
             return false;
         }
         // check if the reward is valid
@@ -228,7 +228,7 @@ impl Blockchain {
             count += 1;
         }
         average_timestamp /= count;
-        dbg!(average_timestamp) < dbg!(timestamp) && timestamp < dbg!(current_time)
+        average_timestamp < timestamp && timestamp < current_time
     }
 
     /// verify a regular transaction's integrity, check if it is valid.
