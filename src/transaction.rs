@@ -64,7 +64,6 @@ impl Transaction {
             hasher.update(&output.locking_script);
         }
 
-        hasher.update(self.transaction_id);
         hasher.update(serde_json::to_vec(&self.transaction_fee).unwrap());
         if self.additional_data.is_some() {
             hasher.update(&self.additional_data.clone().unwrap());
@@ -102,6 +101,7 @@ impl Transaction {
     pub fn get_transaction_id(&self) -> HashValue {
         self.transaction_id
     }
+    /// if the inputs of this transaction is empty, then it is a coinbase transaction
     pub fn is_coinbase_transaction(tx: &Transaction) -> bool {
         tx.get_inputs().is_empty()
     }

@@ -135,8 +135,8 @@ impl Blockchain {
     /// verify a block's integrity, check if it is valid
     /// - check all regular transactions in the block
     /// - check the coinbase transaction
-    ///     - if it follow the reward rule of this blockchain
-    ///     - if it equal to the sum of transaction fee
+    ///     - if it follows the reward rule of this blockchain
+    ///     - if it equals to the sum of transaction fee
     /// - check the merkle root of the block
     /// - check the difficulty of the block
     /// - check the hash value of the block
@@ -180,11 +180,11 @@ impl Blockchain {
             .fold(dec!(0.0), |sum, tx| sum + tx.get_transaction_fee());
 
         // check if the transaction hash is equal to the transaction ID
-        if coinbase_tx.sha256() != coinbase_tx.get_transaction_id() {
+        if dbg!(coinbase_tx.sha256() != coinbase_tx.get_transaction_id()) {
             return false;
         }
         // check if the reward is valid
-        let reward = Self::reward_algorithm(block_index + 1);
+        let reward = Self::reward_algorithm(block_index);
 
         let mut output_fee_sum = dec!(0.0);
         for output in coinbase_tx.get_outputs() {
@@ -228,7 +228,7 @@ impl Blockchain {
             count += 1;
         }
         average_timestamp /= count;
-        average_timestamp < timestamp && timestamp < current_time
+        dbg!(average_timestamp) < dbg!(timestamp) && timestamp < dbg!(current_time)
     }
 
     /// verify a regular transaction's integrity, check if it is valid.
@@ -371,6 +371,7 @@ impl Display for Blockchain {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::thread::sleep;
 
     #[test]
     fn test_new_blockchain() {
@@ -388,16 +389,21 @@ mod tests {
     fn test_generate_new_block() {
         let mut blockchain = Blockchain::new("hello world");
         let latest_reward_fee = blockchain.get_latest_reward(&[]);
+        sleep(std::time::Duration::from_secs(1)); // simulate the time before creating a new block
         let block = blockchain.generate_new_block(
             vec![(HashValue::new([0u8; 32]), latest_reward_fee)],
             "0.1v test".to_string(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
-                .as_secs(),
+                .as_secs(), // for the test, set the timestamp to 10 seconds later
             0x1E123456_u32,
             vec![],
         );
+        sleep(std::time::Duration::from_secs(1)); //simulate the time gap between mining and verifying process
+        let res = blockchain.verify_block(&block, 0x1E123456_u32);
+        assert!(res);
+
         blockchain.add_block(block);
         println!("{}", blockchain);
     }
