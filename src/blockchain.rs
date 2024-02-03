@@ -39,18 +39,26 @@ impl Blockchain {
         algorithm(&self.tx_pool)
     }
 
-    /// get the latest reward of the blockchain
+    /// get the reward of the next block of this blockchain
+    ///
+    /// the inflation rate of the rusty coin is 2%
     pub fn get_latest_reward(&self, unpacked_transactions: &[Transaction]) -> Decimal {
         let aggregate_tx_fee = unpacked_transactions
             .iter()
             .fold(dec!(0.0), |sum, tx| sum + tx.get_transaction_fee());
-        let reward = Self::reward_algorithm(self.get_last_block().unwrap().index + 1);
-        reward + aggregate_tx_fee
+
+        Self::reward_algorithm(self.get_last_block().unwrap().index + 1)
+            + Self::inflated_tx_fee(aggregate_tx_fee)
+    }
+
+    /// the inflation rate of the rusty coin is 2%
+    fn inflated_tx_fee(tx_fee: Decimal) -> Decimal {
+        tx_fee * dec!(1.02)
     }
 
     /// generate a new block, including the coinbase transaction.
     ///
-    /// this function include the mining process, which is time consuming
+    /// this function include the mining process, which is time-consuming
     /// # Arguments:
     /// * `address`: HashValue - the address of the miner
     /// * `protocol_version`: String - the version of the protocol
@@ -183,9 +191,8 @@ impl Blockchain {
         if coinbase_tx.sha256() != coinbase_tx.get_transaction_id() {
             return false;
         }
-        // check if the reward is valid
-        let reward = Self::reward_algorithm(block_index);
 
+        // sum the output fee of the coinbase transaction
         let mut output_fee_sum = dec!(0.0);
         for output in coinbase_tx.get_outputs() {
             if output.get_amount() < dec!(0.0) {
@@ -194,7 +201,8 @@ impl Blockchain {
             output_fee_sum += output.get_amount();
         }
 
-        output_fee_sum <= reward + aggregate_tx_fee
+        output_fee_sum
+            <= Self::reward_algorithm(block_index) + Self::inflated_tx_fee(aggregate_tx_fee)
     }
 
     fn verify_merkle_root(&self, block: &Block) -> bool {
@@ -401,7 +409,9 @@ mod tests {
             vec![],
         );
         sleep(std::time::Duration::from_secs(1)); //simulate the time gap between mining and verifying process
+
         let res = blockchain.verify_block(&block, 0x1E123456_u32);
+
         assert!(res);
 
         blockchain.add_block(block);
