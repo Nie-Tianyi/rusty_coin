@@ -1,4 +1,4 @@
-//! Inplementation of a bitcoin-like system
+//! Implementation of a bitcoin-like system
 use axum::routing::get;
 use axum::Router;
 use std::net::SocketAddr;

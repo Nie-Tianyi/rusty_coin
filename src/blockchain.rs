@@ -1,19 +1,20 @@
-use crate::block::Block;
 /// The core part of rusty coin
 /// The mining rule of rusty coin:
 ///     - 10 seconds per block, adjust difficulty every hour
 ///     - the first transaction in every block should be the coinbase transaction
-///     - coinbase need get 6 * 24 (= 1 day) confirmation before spent
-///     - UTXO need get 6 (= 1 min) confirmation before spent
+///     - a coinbase UTXO need get 6 * 24 (= 1 day) confirmation before spent
+///     - a regular UTXO need get 6 (= 1 min) confirmation before spent
 /// The reward rule of rusty coin is a convergent infinite geometric series:
 ///     - $ reward = $
 use crate::transaction::{Output, Transaction};
+use crate::block::Block;
 use crate::types::HashValue;
 use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::thread::sleep;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -28,6 +29,22 @@ impl Blockchain {
         let genesis_block = Self::create_genesis_block(genesis_msg);
         Self {
             blockchain: vec![genesis_block],
+            tx_pool: vec![],
+        }
+    }
+
+    /// create a new blockchain, start with a given genesis block
+    pub fn new_chain_start_with(genesis_block: Block) -> Self{
+        Self {
+            blockchain: vec![genesis_block],
+            tx_pool: vec![],
+        }
+    }
+
+    /// create a new chain from a Block Vector
+    pub fn from_vec(chain:&[Block]) -> Self{
+        Self {
+            blockchain: chain.to_vec(),
             tx_pool: vec![],
         }
     }
@@ -102,7 +119,7 @@ impl Blockchain {
             nonce: 0,
         };
         block.merkle_root = block.calc_merkle_root();
-        block.hash = block.find_valid_hash(); // POW algorithm, 2 rounds of sha256
+        block.update_hash_and_nonce(); // POW algorithm, 2 rounds of sha256
         block
     }
 
@@ -135,9 +152,32 @@ impl Blockchain {
         self.blockchain.get(index)
     }
 
+    /// resolve conflicts
+    /// the longest chain wins
+    /// the hardest chain wins
+    /// unpacked transactions will be re-add to the transaction pool after being verified
+    pub fn resolve_conflicts(&self, candidate_chain: &[Block]) {
+        // find the bifurcation node, from the chain tail to the head
+
+        unimplemented!()
+    }
+
     /// get the latest block of the blockchain
     pub fn get_last_block(&self) -> Option<&Block> {
         self.blockchain.last()
+    }
+
+    /// verify all the block in the chain one by one
+    pub fn verify_chain(chain: &[Block]) -> bool {
+        let new_chain = Blockchain::from_vec(chain);
+
+        for block in new_chain.blockchain {
+            if !new_chain.verify_block(&block, block.difficulty) {
+                return false
+            }
+        }
+
+        true
     }
 
     /// verify a block's integrity, check if it is valid
@@ -154,6 +194,7 @@ impl Blockchain {
             && self.verify_merkle_root(block)
             && self.verify_difficulty(block, network_difficulty)
             && self.verify_block_hash(block)
+            && self.verify_prev_hash(block)
             && self.verify_timestamp(block.timestamp)
     }
 
@@ -217,9 +258,17 @@ impl Blockchain {
         block.sha256().sha256() == block.hash && block.hash <= block.target_threshold()
     }
 
+    fn verify_prev_hash(&self, block: &Block) -> bool {
+        if let Some(prev_block) = self.get_block(block.index - 1) {
+            prev_block.hash == block.prev_hash
+        }else {
+            false
+        }
+    }
+
     /// verify timestamp (in seconds, UTC +0:00) of the block:
-    /// the timestamp of the block should be less than the current time
-    /// and the timestamp of the block should be larger than the average timestamps of the previous 10 blocks
+    /// the timestamp of the block should be less than or equal to the current time
+    /// and the timestamp of the block should be larger than or equal to the average timestamps of the previous 10 blocks
     /// (if there are less than 10 blocks, then use the average timestamps of all the previous blocks)
     fn verify_timestamp(&self, timestamp: u64) -> bool {
         let current_time = SystemTime::now()
@@ -236,7 +285,7 @@ impl Blockchain {
             count += 1;
         }
         average_timestamp /= count;
-        average_timestamp < timestamp && timestamp < current_time
+        average_timestamp <= timestamp && timestamp <= current_time
     }
 
     /// verify a regular transaction's integrity, check if it is valid.
@@ -410,9 +459,9 @@ mod tests {
         );
         sleep(std::time::Duration::from_secs(1)); //simulate the time gap between mining and verifying process
 
-        let res = blockchain.verify_block(&block, 0x1E123456_u32);
+        let verification_res = blockchain.verify_block(&block, 0x1E123456_u32);
 
-        assert!(res);
+        assert!(verification_res);
 
         blockchain.add_block(block);
         println!("{}", blockchain);

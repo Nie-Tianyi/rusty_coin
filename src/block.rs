@@ -94,7 +94,7 @@ impl Block {
     }
     /// POW algorithm,
     /// find the valid hash value by the proof of work
-    pub fn find_valid_hash(&mut self) -> HashValue {
+    pub fn update_hash_and_nonce(&mut self) {
         let mut nonce = self.nonce;
         let target_threshold = self.target_threshold();
         let mut valid_hash = self.sha256().sha256();
@@ -105,7 +105,7 @@ impl Block {
             valid_hash = self.sha256().sha256();
             // println!("nonce: {}, hash: {}", nonce, valid_hash)
         }
-        valid_hash
+        self.hash = valid_hash;
     }
 
     /// calculate the hash value of the block
@@ -170,14 +170,14 @@ mod tests {
             prev_hash: HashValue::new([0; 32]),
             hash: HashValue::new([0; 32]),
             merkle_root: HashValue::new([0; 32]),
-            difficulty: 0x1E123456u32,
+            difficulty: 0x20123456_u32,
             nonce: 0,
         };
         let target_threshold = block.target_threshold();
 
         assert_eq!(
             target_threshold.to_string(),
-            "0x0000123456000000000000000000000000000000000000000000000000000000"
+            "0x1234560000000000000000000000000000000000000000000000000000000000"
         );
     }
     #[test]
@@ -227,10 +227,10 @@ mod tests {
             prev_hash: HashValue::new([0; 32]),
             hash: HashValue::new([0; 32]),
             merkle_root: HashValue::new([0; 32]),
-            difficulty: 0x1E123456u32,
-            nonce: 2054888,
+            difficulty: 0x1E123456_u32,
+            nonce: 0,
         };
-        block.hash = block.find_valid_hash();
-        println!("{:?}", block);
+        block.update_hash_and_nonce();
+        println!("{}", block);
     }
 }

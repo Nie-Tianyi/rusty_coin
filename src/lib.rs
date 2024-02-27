@@ -1,4 +1,4 @@
-//! Inplementation of a blockchain
+//! Implementation of a blockchain
 pub mod block;
 pub mod blockchain;
 pub mod errors;

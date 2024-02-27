@@ -187,7 +187,7 @@ mod test {
 
     #[test]
     fn test_export_and_import_from_a_file() {
-        const FILE_PATH: &str = "./test_key.rscnkey";
+        const FILE_PATH: &str = "./test_key.rsckey";
         let wallet = Wallet::new();
         if let Err(e) = wallet.save_private_key_to_file(FILE_PATH) {
             println!("{}", e)
@@ -203,7 +203,7 @@ mod test {
         fs::remove_file(FILE_PATH).expect("Delete Fail: No such file");
     }
 
-    /// in P2PKH, the address and the locking script is the same thing
+    // in P2PKH, the address and the locking script is the same thing
     #[test]
     fn test_locking_script() {
         let wallet = Wallet::new();
