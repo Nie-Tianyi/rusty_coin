@@ -18,7 +18,7 @@ use std::fmt::Display;
 /// * `difficulty` - An unsigned 32-bit integer (in nBits format) representing the difficulty target for the proof of work. The difficulty is adjusted every block.
 /// * `nonce` - A signed 64-bit integer used in the proof of work.
 /// * `data` - A vector of `Transaction` structs representing the transactions included in the block.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub struct Block {
     pub(crate) version: String,        // version of the block
     pub(crate) index: usize,           // block height

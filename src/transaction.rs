@@ -8,7 +8,7 @@ use std::hash::{Hash, Hasher};
 
 /// Represents a transaction in the blockchain.
 /// Pay2PubKeyHash(P2PKH) is used as the locking script.
-#[derive(Debug, Eq, PartialOrd, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialOrd, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Transaction {
     inputs: Vec<Input>,               // The inputs for the transaction.
     outputs: Vec<Output>,             // The outputs for the transaction.
@@ -198,7 +198,7 @@ impl Hash for Transaction {
 /// previous transaction need to be provided as the transaction hash is needed.
 
 /// Represents an input for a transaction.
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Input {
     prev_transaction_hash: HashValue, // The hash of the previous transaction.
     prev_block_index: usize,          // The index of the previous block.
@@ -269,7 +269,7 @@ impl Input {
 }
 
 /// Represents an output for a transaction.
-#[derive(Debug, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialOrd, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Output {
     amount: Decimal,                 // The amount of the output.
     length_of_locking_script: usize, // The length of the locking script.

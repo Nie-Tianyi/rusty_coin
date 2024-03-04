@@ -1,3 +1,4 @@
+use crate::block::Block;
 /// The core part of rusty coin
 /// The mining rule of rusty coin:
 ///     - 10 seconds per block, adjust difficulty every hour
@@ -7,14 +8,13 @@
 /// The reward rule of rusty coin is a convergent infinite geometric series:
 ///     - $ reward = $
 use crate::transaction::{Output, Transaction};
-use crate::block::Block;
 use crate::types::HashValue;
 use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::fmt::Display;
-use std::thread::sleep;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -34,7 +34,7 @@ impl Blockchain {
     }
 
     /// create a new blockchain, start with a given genesis block
-    pub fn new_chain_start_with(genesis_block: Block) -> Self{
+    pub fn new_chain_start_with(genesis_block: Block) -> Self {
         Self {
             blockchain: vec![genesis_block],
             tx_pool: vec![],
@@ -42,16 +42,16 @@ impl Blockchain {
     }
 
     /// create a new chain from a Block Vector
-    pub fn from_vec(chain:&[Block]) -> Self{
+    pub fn from_vec(chain: &[Block]) -> Self {
         Self {
             blockchain: chain.to_vec(),
             tx_pool: vec![],
         }
     }
 
-    pub fn filter_transactions_by_algo<F>(&self, algorithm: F) -> Vec<Transaction>
+    pub fn filter_transactions_by_algo<F>(&self, algorithm: F) -> &[Transaction]
     where
-        F: FnOnce(&Vec<Transaction>) -> Vec<Transaction>,
+        F: FnOnce(&Vec<Transaction>) -> &[Transaction],
     {
         algorithm(&self.tx_pool)
     }
@@ -68,9 +68,9 @@ impl Blockchain {
             + Self::inflated_tx_fee(aggregate_tx_fee)
     }
 
-    /// the inflation rate of the rusty coin is 2%
+    /// the inflation rate of the rusty coin is 3%
     fn inflated_tx_fee(tx_fee: Decimal) -> Decimal {
-        tx_fee * dec!(1.02)
+        tx_fee * dec!(1.03)
     }
 
     /// generate a new block, including the coinbase transaction.
@@ -152,14 +152,96 @@ impl Blockchain {
         self.blockchain.get(index)
     }
 
-    /// resolve conflicts
-    /// the longest chain wins
-    /// the hardest chain wins
-    /// unpacked transactions will be re-add to the transaction pool after being verified
-    pub fn resolve_conflicts(&self, candidate_chain: &[Block]) {
-        // find the bifurcation node, from the chain tail to the head
+    /// resolve conflicts:
+    /// - the longest chain wins
+    /// - the hardest chain wins
+    ///
+    /// unpacked transactions in the abandoned block will be re-added
+    /// to the transaction pool after being verified
+    ///
+    /// # Arguments
+    /// * `candidate_chain`: &[Block] - the candidate chain in a correct order
+    ///
+    /// # Returns
+    /// * `bool` - if the original chain has been replaced, return true, else return false
+    pub fn resolve_conflicts(&mut self, candidate_chain: &[Block]) -> bool {
+        // search the bifurcation node, from the chain head to the tail
+        // compare the hash instead of the whole block (the candidate chain has already been verified, so the hash should be valid)
 
-        unimplemented!()
+        // first check the genesis block, if the genesis block is different, then the two chains are totally different, reject the new chain directly
+        if self.blockchain[0].hash != candidate_chain[0].hash {
+            return false;
+        }
+
+        // find the fork point
+        let mut fork_point = 0;
+        for (block, candidate_block) in self.blockchain.iter().zip(candidate_chain.iter()) {
+            if block.hash != candidate_block.hash {
+                break;
+            }
+            fork_point += 1;
+        }
+
+        // longest chain wins
+        match self.blockchain.len().cmp(&candidate_chain.len()) {
+            Ordering::Less => {
+                // the candidate chain is longer, replace the current chain with the candidate chain
+                self.blockchain = candidate_chain.to_vec();
+                // add the unpacked transactions in the abandoned chain to the transaction pool
+                for block in self.blockchain.iter().skip(fork_point) {
+                    self.tx_pool.extend(block.data.iter().skip(1).cloned()); // skip the coinbase transaction
+                }
+                true
+            }
+            Ordering::Equal => {
+                // the hardest chain wins
+                let current_chain_work: u32 =
+                    self.blockchain.iter().map(|block| block.difficulty).sum();
+
+                let candidate_chain_work: u32 =
+                    candidate_chain.iter().map(|block| block.difficulty).sum();
+
+                match current_chain_work.cmp(&candidate_chain_work) {
+                    Ordering::Greater => {
+                        // the current chain is harder, no need to change
+                        // add the unpacked transactions in the candidate chain to the transaction pool
+                        for block in candidate_chain.iter().skip(fork_point) {
+                            self.tx_pool.extend(block.data.iter().skip(1).cloned());
+                            // skip the coinbase transaction
+                        }
+                        false
+                    }
+                    Ordering::Less => {
+                        // the candidate chain is harder, replace the current chain with the candidate chain
+                        self.blockchain = candidate_chain.to_vec();
+                        // add the unpacked transactions in the abandoned chain to the transaction pool
+                        for block in self.blockchain.iter().skip(fork_point) {
+                            self.tx_pool.extend(block.data.iter().skip(1).cloned());
+                            // skip the coinbase transaction
+                        }
+                        true
+                    }
+                    Ordering::Equal => {
+                        // if the work of the two chains are the same again, then:
+                        // the first chain wins
+                        // add the unpacked transactions in the candidate chain to the transaction pool
+                        for block in candidate_chain.iter().skip(fork_point) {
+                            self.tx_pool.extend(block.data.iter().skip(1).cloned());
+                            // skip the coinbase transaction
+                        }
+                        false
+                    }
+                }
+            }
+            Ordering::Greater => {
+                // the current chain is longer, no need to change
+                // add the unpacked transactions in the candidate chain to the transaction pool
+                for block in candidate_chain.iter().skip(fork_point) {
+                    self.tx_pool.extend(block.data.iter().skip(1).cloned()); // skip the coinbase transaction
+                }
+                false
+            }
+        }
     }
 
     /// get the latest block of the blockchain
@@ -167,13 +249,18 @@ impl Blockchain {
         self.blockchain.last()
     }
 
-    /// verify all the block in the chain one by one
+    /// verify all the block in the chain one by one,
+    ///
+    /// the blocks must be arranged in the correct order:
+    ///
+    /// genesis block -> block 1 -> block 2 -> ... -> block n
     pub fn verify_chain(chain: &[Block]) -> bool {
         let new_chain = Blockchain::from_vec(chain);
 
-        for block in new_chain.blockchain {
-            if !new_chain.verify_block(&block, block.difficulty) {
-                return false
+        for block in &new_chain.blockchain {
+            if !new_chain.verify_block(block, block.difficulty) {
+                // fn`verify_difficulty()` in the `verify_block()` will be always true
+                return false;
             }
         }
 
@@ -213,10 +300,11 @@ impl Blockchain {
     /// - check if the reward is valid
     ///
     /// # Arguments:
-    /// * `coinbase_tx`: &Transaction - the coinbase transaction to be verified
-    /// * `transactions`: &[Transaction] - all the transactions in the block
-    /// * `block_index`: usize - the index of the block
-    /// returns: bool - if the coinbase transaction is valid, return true, else return false
+    /// * `coinbase_tx`: `&Transaction` - the coinbase transaction to be verified
+    /// * `transactions`: `&[Transaction]` - all the transactions in the block
+    /// * `block_index`: `usize` - the index of the block
+    ///
+    /// returns: `bool` - if the coinbase transaction is valid, return true, else return false
     fn verify_coinbase_transaction(
         &self,
         coinbase_tx: &Transaction,
@@ -261,7 +349,7 @@ impl Blockchain {
     fn verify_prev_hash(&self, block: &Block) -> bool {
         if let Some(prev_block) = self.get_block(block.index - 1) {
             prev_block.hash == block.prev_hash
-        }else {
+        } else {
             false
         }
     }
@@ -466,4 +554,7 @@ mod tests {
         blockchain.add_block(block);
         println!("{}", blockchain);
     }
+
+    #[test]
+    fn test_resolve_conflicts() {}
 }

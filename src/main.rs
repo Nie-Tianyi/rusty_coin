@@ -35,7 +35,7 @@ async fn main() {
     server.await.unwrap();
 }
 
-///
+/// A simple ping-pong function
 async fn pong() -> &'static str {
     "pong"
 }

@@ -19,7 +19,7 @@ impl Display for InvalidTransactionInput {
     }
 }
 
-impl Error for InvalidTransactionInput{}
+impl Error for InvalidTransactionInput {}
 
 #[derive(Debug)]
 pub struct InvalidTransactionOutput(String);
