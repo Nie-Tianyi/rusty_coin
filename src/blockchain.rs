@@ -17,7 +17,7 @@ use std::cmp::Ordering;
 use std::fmt::Display;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Blockchain {
     blockchain: Vec<Block>,    // store the blockchain / pieces of the blockchain
     tx_pool: Vec<Transaction>, // store the unpacked transactions
@@ -556,5 +556,58 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_conflicts() {}
+    fn test_resolve_conflicts() {
+        let mut blockchain = Blockchain::new("hello world");
+        let mut blockchain_copied = blockchain.clone();
+
+        let tx1 = Transaction::new(
+            vec![],
+            vec![Output::new(dec!(50.0), HashValue::new([0u8; 32]).to_vec())],
+            HashValue::new([0_u8; 32]),
+            dec!(0.0),
+            Some("test fake tx 1".as_bytes().to_vec()),
+        );
+
+        let tx2 = Transaction::new(
+            vec![],
+            vec![Output::new(dec!(50.0), HashValue::new([0u8; 32]).to_vec())],
+            HashValue::new([1_u8; 32]),
+            dec!(0.0),
+            None,
+        );
+
+        blockchain.add_block(
+            blockchain.generate_new_block(
+                vec![(HashValue::new([0u8; 32]), dec!(50.0))],
+                "0.1v test".to_string(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+                0x1E123456_u32,
+                vec![tx1],
+            ),
+        );
+
+        blockchain_copied.add_block(
+            blockchain_copied.generate_new_block(
+                vec![(HashValue::new([0u8; 32]), dec!(50.0))],
+                "0.1v test".to_string(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+                0x1E123456_u32,
+                vec![tx2],
+            ),
+        );
+
+        let before_resolve = blockchain.clone();
+
+        let res = blockchain.resolve_conflicts(&blockchain_copied.blockchain);
+
+        assert_eq!(before_resolve.blockchain, blockchain.blockchain);
+
+        assert!(!res);
+    }
 }
