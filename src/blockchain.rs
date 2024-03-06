@@ -605,6 +605,53 @@ mod tests {
         let before_resolve = blockchain.clone();
 
         let res = blockchain.resolve_conflicts(&blockchain_copied.blockchain);
+        // [Blockchain]:
+        // Block[0]:
+        // 	version: 0.1v test
+        // 	timestamp: 1709725083
+        // 	prev_hash: 0x0000000000000000000000000000000000000000000000000000000000000000
+        // 	hash: 0xb3fa77116dffb01cd560a6d246fd6c82ebcfe27b18bed173986170c7ad2d2244
+        // 	merkle_root: 0xae058a070f5ce7e44d1d6a54f5011e69a6aead1993409e8a7d79ef53abbe5bf2
+        // 	difficulty: 0
+        // 	nonce: 0
+        // 	data: [
+        // 		Transaction ID: 0xae058a070f5ce7e44d1d6a54f5011e69a6aead1993409e8a7d79ef53abbe5bf2
+        // 		Transaction Fee: 0.0
+        // 		Inputs:
+        // 		Outputs:
+        // 		Additional Data: Some([104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100])
+        // 	]
+        //
+        //
+        //
+        // Block[1]:
+        // 	version: 0.1v test
+        // 	timestamp: 1709725083
+        // 	prev_hash: 0xb3fa77116dffb01cd560a6d246fd6c82ebcfe27b18bed173986170c7ad2d2244
+        // 	hash: 0x00000b5bb6e201e16fdb7a8a1d373da12496db001a3df865941acaa321b23525
+        // 	merkle_root: 0x8923412372d89abca3f2863712f46a2b488cbdf70aa535a2b9a1f8fae0bc756c
+        // 	difficulty: 504509526
+        // 	nonce: 925788
+        // 	data: [
+        // 		Transaction ID: 0xb0768ef4fb2d549a1aa450415481ea40862d460f038792e8e4c0af03a47b5a87
+        // 		Transaction Fee: 0.0
+        // 		Inputs:
+        // 		Outputs:
+        // 			Amount: 50.0
+        // 			Length of Locking Script: 32
+        // 			Locking Script: 0x0000000000000000000000000000000000000000000000000000000000000000
+        // 		Additional Data: None
+        // 		Transaction ID: 0x0000000000000000000000000000000000000000000000000000000000000000
+        // 		Transaction Fee: 0.0
+        // 		Inputs:
+        // 		Outputs:
+        // 			Amount: 50.0
+        // 			Length of Locking Script: 32
+        // 			Locking Script: 0x0000000000000000000000000000000000000000000000000000000000000000
+        // 		Additional Data: Some([116, 101, 115, 116, 32, 102, 97, 107, 101, 32, 116, 120, 32, 49])
+        // 	]
+
+        println!("{}", blockchain);
 
         assert_eq!(before_resolve.blockchain, blockchain.blockchain);
 
