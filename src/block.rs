@@ -103,7 +103,6 @@ impl Block {
             nonce += 1;
             self.nonce = nonce;
             valid_hash = self.sha256().sha256();
-            // println!("nonce: {}, hash: {}", nonce, valid_hash)
         }
         self.hash = valid_hash;
     }
@@ -135,14 +134,14 @@ impl Block {
 impl Display for Block {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Block[{}]:", self.index)?;
-        writeln!(f, "\tversion: {}", self.version)?;
-        writeln!(f, "\ttimestamp: {}", self.timestamp)?;
-        writeln!(f, "\tprev_hash: {}", self.prev_hash)?;
-        writeln!(f, "\thash: {}", self.hash)?;
-        writeln!(f, "\tmerkle_root: {}", self.merkle_root)?;
-        writeln!(f, "\tdifficulty: {}", self.difficulty)?;
-        writeln!(f, "\tnonce: {}", self.nonce)?;
-        writeln!(f, "\tdata: [")?;
+        writeln!(f, "\t-version: {}", self.version)?;
+        writeln!(f, "\t-timestamp: {}", self.timestamp)?;
+        writeln!(f, "\t-prev_hash: {}", self.prev_hash)?;
+        writeln!(f, "\t-hash: {}", self.hash)?;
+        writeln!(f, "\t-merkle_root: {}", self.merkle_root)?;
+        writeln!(f, "\t-difficulty: {}", self.difficulty)?;
+        writeln!(f, "\t-nonce: {}", self.nonce)?;
+        writeln!(f, "\t-data: [")?;
         for tx in self.data.iter() {
             let tx_str = format!("{}", tx);
             for line in tx_str.lines() {
