@@ -1,12 +1,13 @@
 use crate::block::Block;
 /// The core part of rusty coin
 /// The mining rule of rusty coin:
-///     - 10 seconds per block, adjust difficulty every hour
-///     - the first transaction in every block should be the coinbase transaction
-///     - a coinbase UTXO need get 6 * 24 (= 1 day) confirmation before spent
-///     - a regular UTXO need get 6 (= 1 min) confirmation before spent
+/// * 10 seconds per block, adjust difficulty every hour
+/// * the first transaction in every block should be the coinbase transaction
+/// * a coinbase UTXO need get 6 * 24 (= 1 day) confirmation before spent
+/// * a regular UTXO need get 6 (= 1 min) confirmation before spent
+///
 /// The reward rule of rusty coin is a convergent infinite geometric series:
-///     - $ reward = $
+/// * $ reward = $
 use crate::transaction::{Output, Transaction};
 use crate::types::HashValue;
 use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
@@ -77,7 +78,7 @@ impl Blockchain {
     ///
     /// this function include the mining process, which is time-consuming
     /// # Arguments:
-    /// * `address`: HashValue - the address of the miner
+    /// * `address`: `HashValue` - the address of the miner
     /// * `protocol_version`: String - the version of the protocol
     /// * `time_millis`: u64 - the timestamp of the block
     /// * `prev_block`: &Block - the previous block
@@ -160,7 +161,7 @@ impl Blockchain {
     /// to the transaction pool after being verified
     ///
     /// # Arguments
-    /// * `candidate_chain`: &[Block] - the candidate chain in a correct order
+    /// * `candidate_chain`: `&[Block]` - the candidate chain in a correct order
     ///
     /// # Returns
     /// * `bool` - if the original chain has been replaced, return true, else return false

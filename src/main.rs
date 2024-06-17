@@ -40,6 +40,8 @@ async fn pong() -> &'static str {
     "pong"
 }
 
+
+
 #[allow(dead_code)]
 async fn ping(addr: &str) -> Result<String, Box<dyn std::error::Error>> {
     let url = format!("http://{addr}/ping");
@@ -47,3 +49,5 @@ async fn ping(addr: &str) -> Result<String, Box<dyn std::error::Error>> {
     println!("{response}");
     Ok(response)
 }
+
+

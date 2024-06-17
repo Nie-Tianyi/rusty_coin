@@ -159,7 +159,7 @@ impl Wallet {
         })
     }
 
-    /// export the private key to a file
+    /// export the private key to a binary file
     ///
     /// later the wallet can be recovered from method
     ///
